@@ -6,23 +6,25 @@
 KR106::KR106(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
-  // --- Sliders: percent type (0-1 linear) ---
-  GetParam(kBenderDco)->InitDouble("Bender DCO", 0., 0., 1., 0.01, "%");
-  GetParam(kBenderVcf)->InitDouble("Bender VCF", 0., 0., 1., 0.01, "%");
-  GetParam(kLfoDelay)->InitDouble("LFO Delay", 0., 0., 1., 0.01, "");
-  GetParam(kDcoLfo)->InitDouble("DCO LFO", 0., 0., 1., 0.01, "%");
-  GetParam(kDcoPwm)->InitDouble("DCO PWM", 0., 0., 1., 0.01, "%");
-  GetParam(kDcoSub)->InitDouble("DCO Sub", 1., 0., 1., 0.01, "%");
-  GetParam(kDcoNoise)->InitDouble("DCO Noise", 0., 0., 1., 0.01, "%");
+  // --- Sliders: 0-1 internal, displayed as 0-10 (Juno-106 panel scale) ---
+  auto disp10 = [](double v, WDL_String& s) { s.SetFormatted(32, "%.1f", v * 10.0); };
+
+  GetParam(kBenderDco)->InitDouble("Bender DCO", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kBenderVcf)->InitDouble("Bender VCF", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kLfoDelay)->InitDouble("LFO Delay", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kDcoLfo)->InitDouble("DCO LFO", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kDcoPwm)->InitDouble("DCO PWM", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kDcoSub)->InitDouble("DCO Sub", 1., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kDcoNoise)->InitDouble("DCO Noise", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
   GetParam(kVcfFreq)->InitDouble("VCF Freq", 700., 20., 18000., 1., "Hz",
     IParam::kFlagsNone, "", IParam::ShapeExp());
-  GetParam(kVcfRes)->InitDouble("VCF Res", 0., 0., 1., 0.01, "%");
-  GetParam(kVcfEnv)->InitDouble("VCF Env", 0., 0., 1., 0.01, "%");
-  GetParam(kVcfLfo)->InitDouble("VCF LFO", 0., 0., 1., 0.01, "%");
-  GetParam(kVcfKbd)->InitDouble("VCF Kbd", 0., 0., 1., 0.01, "%");
-  GetParam(kEnvS)->InitDouble("Sustain", 0.9, 0.001, 1., 0.001, "%");
+  GetParam(kVcfRes)->InitDouble("VCF Res", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kVcfEnv)->InitDouble("VCF Env", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kVcfLfo)->InitDouble("VCF LFO", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kVcfKbd)->InitDouble("VCF Kbd", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kEnvS)->InitDouble("Sustain", 0.9, 0.001, 1., 0.001, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
 
-  GetParam(kVcaLevel)->InitDouble("Volume", 1., 0., 1., 0.01, "");
+  GetParam(kVcaLevel)->InitDouble("Volume", 1., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
 
   // --- Sliders: BPM type (linear with real range) ---
   GetParam(kArpRate)->InitDouble("Arp Rate", 120., 90., 3000., 0.1, "BPM"); // 1.5–50 Hz
@@ -219,7 +221,11 @@ void KR106::ProcessMidiMsg(const IMidiMsg& msg)
 {
   TRACE;
   mDSP.ProcessMidiMsg(msg);
-  SendMidiMsg(msg); // forward for keyboard display and MIDI output
+  SendMidiMsg(msg); // MIDI output
+  // Queue note-on/off for keyboard display (drained on UI thread in OnIdle)
+  auto s = msg.StatusMsg();
+  if (s == IMidiMsg::kNoteOn || s == IMidiMsg::kNoteOff)
+    mMidiForKeyboard.Push(msg);
 }
 
 void KR106::OnParamChange(int paramIdx)
@@ -233,5 +239,18 @@ void KR106::OnParamChange(int paramIdx)
 void KR106::OnIdle()
 {
   mScopeSender.TransmitData(*this);
+
+  // Forward queued MIDI note events to the keyboard control for visual display
+  if (auto* pUI = GetUI())
+  {
+    auto* pKb = static_cast<KR106KeyboardControl*>(pUI->GetControlWithTag(kCtrlTagKeyboard));
+    if (pKb)
+    {
+      IMidiMsg msg;
+      while (mMidiForKeyboard.Pop(msg))
+        pKb->SetNoteFromMidi(msg.NoteNumber(),
+          msg.StatusMsg() == IMidiMsg::kNoteOn && msg.Velocity() > 0);
+    }
+  }
 }
 #endif

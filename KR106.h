@@ -2,6 +2,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "ISender.h"
+#include "IPlugQueue.h"
 #include "DSP/KR106_DSP.h"
 
 const int kNumPresets = 211;
@@ -84,4 +85,5 @@ private:
   KR106DSP<sample> mDSP{6};
   IBufferSender<2> mScopeSender; // ch0=audio, ch1=osc sync
   bool mPowerOn = true;
+  IPlugQueue<IMidiMsg> mMidiForKeyboard {512}; // audio→UI thread-safe MIDI display queue
 };

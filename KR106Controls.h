@@ -35,15 +35,15 @@ class KR106KnobControl : public IBKnobControl
 public:
   KR106KnobControl(float x, float y, const IBitmap& bitmap, int paramIdx)
   : IBKnobControl(x, y, bitmap, paramIdx, EDirection::Vertical)
-  {
-    mDisablePrompt = false;
-  }
+  {}
 
   void OnMouseDown(float x, float y, const IMouseMod& mod) override
   {
-    if (mod.R) { PromptUserInput(); return; }
+    if (mod.R) return;
     IBKnobControl::OnMouseDown(x, y, mod);
   }
+
+  void OnMouseDblClick(float x, float y, const IMouseMod& mod) override { /* no reset */ }
 
   void OnMouseDrag(float x, float y, float dX, float dY, const IMouseMod& mod) override
   {
@@ -74,18 +74,18 @@ class KR106SliderControl : public ISliderControlBase
 public:
   KR106SliderControl(const IRECT& bounds, int paramIdx)
   : ISliderControlBase(bounds, paramIdx, EDirection::Vertical, 2.0, 5.f)
-  {
-    mDisablePrompt = false;
-  }
+  {}
 
   void OnMouseDown(float x, float y, const IMouseMod& mod) override
   {
-    if (mod.R) { PromptUserInput(); return; }
+    if (mod.R) return;
     mMouseDown = true;
     mMouseDragValue = GetValue();
     if (mHideCursorOnDrag)
       GetUI()->HideMouseCursor(true, true);
   }
+
+  void OnMouseDblClick(float x, float y, const IMouseMod& mod) override { /* no reset */ }
 
   void OnMouseUp(float x, float y, const IMouseMod& mod) override
   {
@@ -989,7 +989,7 @@ static void KB_DrawBottom(IGraphics& g, float ox, float oy, bool pressed)
     VLine(g, kKB_Black, ox + 1, oy + 106, oy + 108);
     VLine(g, kKB_Black, ox + 21, oy + 106, oy + 108);
     HLine(g, kKB_Black, ox + 1, oy + 108, ox + 22);
-    g.FillRect(kKB_White, IRECT(ox + 3, oy + 102, ox + 22, oy + 106));
+    // g.FillRect(kKB_White, IRECT(ox + 3, oy + 102, ox + 22, oy + 106)); // highlight square removed
   } else {
     HLine(g, kKB_Mid, ox + 3, oy + 105, ox + 20);
     HLine(g, kKB_Mid, ox + 2, oy + 106, ox + 21);
@@ -1151,7 +1151,7 @@ static void KB_DrawBlack(IGraphics& g, float ox, float oy, bool pressed)
   VLine(g, kKB_Light, ox + 2, oy + 49 + dy, oy + 51 + dy);
   HLine(g, kKB_Light, ox + 3, oy + 51 + dy, ox + 5);
   if (pressed) {
-    g.FillRect(kKB_Dark, IRECT(ox + 4, oy + 48, ox + 10, oy + 50));
+    // g.FillRect(kKB_Dark, IRECT(ox + 4, oy + 48, ox + 10, oy + 50)); // highlight rectangle removed
   }
 }
 
@@ -1171,7 +1171,7 @@ static void KB_DrawLast(IGraphics& g, float ox, float oy, bool pressed)
     HLine(g, kKB_Mid, ox + 3, oy + 106, ox + 20);
     HLine(g, kKB_Mid, ox + 2, oy + 107, ox + 21);
     HLine(g, kKB_Black, ox, oy + 108, ox + 22);
-    g.FillRect(kKB_White, IRECT(ox + 3, oy + 102, ox + 22, oy + 106));
+    // g.FillRect(kKB_White, IRECT(ox + 3, oy + 102, ox + 22, oy + 106)); // highlight square removed
   } else {
     HLine(g, kKB_Mid, ox + 3, oy + 105, ox + 20);
     HLine(g, kKB_Mid, ox + 2, oy + 106, ox + 21);
@@ -1308,7 +1308,7 @@ private:
   void SendNoteOn(int key)
   {
     IMidiMsg msg;
-    msg.MakeNoteOnMsg(key + kMinNote, 100, 0);
+    msg.MakeNoteOnMsg(key + kMinNote, 127, 0);
     GetDelegate()->SendMidiMsgFromUI(msg);
   }
 

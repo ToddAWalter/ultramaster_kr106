@@ -272,7 +272,7 @@ def binary_patch_to_params(p):
         chorus_off,
         b(p['chorus_I_switch']),
         b(p['chorus_II_switch']),
-        int(round(clamp(p['octave_transpose'], 0.0, 2.0))),
+        2 - int(round(clamp(p['octave_transpose'], 0.0, 2.0))),  # binary uses 0=DN,2=UP; flip to 0=UP,2=DN
         int(round(clamp(p['arpeggio_mode'], 0.0, 2.0))),
         int(round(clamp(p['arpeggio_range'], 0.0, 2.0))),
         int(round(clamp(p['lfo_mode'], 0.0, 1.0))),
