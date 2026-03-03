@@ -31,13 +31,13 @@ KR106::KR106(const InstanceInfo& info)
   // --- 4-position HPF switch: 0=bass boost, 1=flat, 2=HPF 240Hz, 3=HPF 720Hz ---
   GetParam(kHpfFreq)->InitInt("HPF", 1, 0, 3);
 
-  // --- Sliders: time type (quartic curve) ---
-  GetParam(kEnvA)->InitDouble("Attack", 50., 1., 3000., 0.1, "ms",
-    IParam::kFlagsNone, "", IParam::ShapePowCurve(4.));
-  GetParam(kEnvD)->InitDouble("Decay", 200., 2., 12000., 0.1, "ms",
-    IParam::kFlagsNone, "", IParam::ShapePowCurve(4.));
-  GetParam(kEnvR)->InitDouble("Release", 200., 2., 12000., 0.1, "ms",
-    IParam::kFlagsNone, "", IParam::ShapePowCurve(4.));
+  // --- Sliders: time type (cubic curve, hardware-calibrated ranges) ---
+  GetParam(kEnvA)->InitDouble("Attack", 50., 2., 2000., 0.1, "ms",
+    IParam::kFlagsNone, "", IParam::ShapePowCurve(3.));
+  GetParam(kEnvD)->InitDouble("Decay", 200., 6., 20000., 0.1, "ms",
+    IParam::kFlagsNone, "", IParam::ShapePowCurve(3.));
+  GetParam(kEnvR)->InitDouble("Release", 200., 6., 20000., 0.1, "ms",
+    IParam::kFlagsNone, "", IParam::ShapePowCurve(3.));
 
   // --- Buttons (toggle 0/1) ---
   GetParam(kTranspose)->InitBool("Transpose", false);
@@ -174,6 +174,11 @@ KR106::KR106(const InstanceInfo& info)
 
     // === SCOPE (upper right) ===
     pGraphics->AttachControl(new KR106ScopeControl(IRECT(791, 24, 919, 90)), kCtrlTagScope);
+
+    // Build timestamp — baked in at compile time so you can confirm the loaded version
+    pGraphics->AttachControl(new ITextControl(IRECT(791, 91, 940, 101),
+      __DATE__ " " __TIME__,
+      IText(8.f, COLOR_WHITE, "Roboto-Regular", EAlign::Far)));
 
     // === KEYBOARD ===
     // Original: (129, 111) size 792x109 — 61 keys C2 to C7

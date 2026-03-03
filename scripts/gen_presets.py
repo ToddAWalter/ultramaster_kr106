@@ -56,7 +56,7 @@ def exp_shape(n, lo, hi):
     return lo * math.pow(hi / lo, clamp(n, 0.0, 1.0))
 
 
-def pow_curve(n, lo, hi, power=4.0):
+def pow_curve(n, lo, hi, power=3.0):
     """IParam::ShapePowCurve(p) — power-curve mapping."""
     return lo + (hi - lo) * math.pow(clamp(n, 0.0, 1.0), power)
 
@@ -207,10 +207,10 @@ def pat_patch_to_params(p):
         p['vcf_lfo'],                                  # kVcfLfo
         p['vcf_kbd'],                                  # kVcfKbd
         p['volume'],                                   # kVcaLevel
-        pow_curve(p['env_attack'], 1.0, 3000.0),       # kEnvA
-        pow_curve(p['env_decay'], 2.0, 12000.0),       # kEnvD
-        linear(p['env_sustain'], 0.001, 1.0),          # kEnvS
-        pow_curve(p['env_release'], 2.0, 12000.0),     # kEnvR
+        pow_curve(p['env_attack'], 2.0, 2000.0),         # kEnvA
+        pow_curve(p['env_decay'], 6.0, 20000.0),        # kEnvD
+        linear(p['env_sustain'], 0.001, 1.0),           # kEnvS
+        pow_curve(p['env_release'], 6.0, 20000.0),      # kEnvR
         0,                                             # kTranspose (default off)
         0,                                             # kHold (default off)
         0,                                             # kArpeggio (default off)
@@ -259,10 +259,10 @@ def binary_patch_to_params(p):
         clamp(p['vcf_lfo'], 0.0, 1.0),
         clamp(p['vcf_kbd'], 0.0, 1.0),
         clamp(p['volume'], 0.0, 1.0),
-        pow_curve(p['env_attack'], 1.0, 3000.0),
-        pow_curve(p['env_decay'], 2.0, 12000.0),
+        pow_curve(p['env_attack'], 2.0, 2000.0),
+        pow_curve(p['env_decay'], 6.0, 20000.0),
         linear(p['env_sustain'], 0.001, 1.0),
-        pow_curve(p['env_release'], 2.0, 12000.0),
+        pow_curve(p['env_release'], 6.0, 20000.0),
         0,
         0,
         b(p['arpeggio_switch']),

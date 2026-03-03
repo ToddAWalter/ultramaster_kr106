@@ -120,7 +120,8 @@ struct ADSR
 {
   enum State { kAttack, kDecay, kSustain, kRelease, kFinished };
   static constexpr float kGateSlope = 1.f / 32.f;
-  static constexpr float kMinLevel = 0.001f; // -60dB threshold
+  static constexpr float kMinLevel  = 0.001f;  // -60dB: calibrates decay/release time constants
+  static constexpr float kSilence   = 1e-5f;   // -100dB: release termination threshold
 
   State mState = kFinished;
   float mEnv = 0.f;
@@ -207,7 +208,7 @@ struct ADSR
       case kRelease:
         mGateEnv -= kGateSlope;
         mEnv *= mReleaseMul;
-        if (mEnv < kMinLevel)
+        if (mEnv < kSilence)
         {
           mEnv = 0.f;
           mState = kFinished;

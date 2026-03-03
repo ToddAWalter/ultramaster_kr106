@@ -3,7 +3,7 @@ CONFIG  ?= Debug
 
 # ── Targets ──────────────────────────────────────────────────────────────────
 
-.PHONY: app vst3 au clap all clean presets help check-iplug2
+.PHONY: app vst3 au clap all clean presets reaper help check-iplug2
 
 app: check-iplug2
 	xcodebuild -project "$(PROJECT)" -target APP -configuration $(CONFIG)
@@ -19,6 +19,12 @@ clap: check-iplug2
 
 all: check-iplug2
 	xcodebuild -project "$(PROJECT)" -target All -configuration $(CONFIG)
+
+reaper: vst3
+	@echo "Restarting Reaper with fresh VST cache..."
+	-killall REAPER 2>/dev/null; sleep 1
+	rm -f "$(HOME)/Library/Application Support/REAPER/reaper-vstplugins64.ini"
+	open -a REAPER
 
 clean:
 	xcodebuild -project "$(PROJECT)" -target All -configuration $(CONFIG) clean
@@ -46,6 +52,7 @@ help:
 	@echo "  make clap         CLAP plugin"
 	@echo "  make all          All formats"
 	@echo "  make clean        Remove build artifacts"
+	@echo "  make reaper       Build VST3, restart Reaper with fresh cache"
 	@echo "  make presets      Regenerate KR106_Presets.h from patch files"
 	@echo ""
 	@echo "  CONFIG=Release make vst3   — release build"
