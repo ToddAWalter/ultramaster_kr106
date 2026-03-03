@@ -179,9 +179,6 @@ KR106::KR106(const InstanceInfo& info)
     pGraphics->AttachControl(new KR106ButtonLEDControl(IRECT(751, 43, 768, 71), kChorusI, kYellow, ledBitmap));
     pGraphics->AttachControl(new KR106ButtonLEDControl(IRECT(767, 43, 784, 71), kChorusII, kOrange, ledBitmap));
 
-    // === VALUE READOUT (below slider panel) ===
-    //pGraphics->AttachControl(new KR106ValueReadout(IRECT(229, 88, 726, 102)));
-
     // === SCOPE (upper right) ===
     pGraphics->AttachControl(new KR106ScopeControl(IRECT(791, 21, 919, 95)), kCtrlTagScope);
 
@@ -294,9 +291,7 @@ void KR106::ProcessMidiMsg(const IMidiMsg& msg)
   }
   else if (isNoteOff)
   {
-    if (mDSP.mHold)
-      ; // Hold active: key stays visually pressed
-    else
+    if (!mDSP.mHold)
     {
       mKeyboardHeld.reset(msg.NoteNumber());
       mMidiForKeyboard.Push(msg);

@@ -1,6 +1,13 @@
 # Ultramaster KR-106
 
-An iPlug2 synthesizer plugin emulating the Roland Juno-106. 6-voice polyphonic, MPE capable, with AU / VST3 / CLAP / Standalone formats.
+A synthesizer plugin emulating the Roland Juno-106, built with [iPlug2](https://github.com/iPlug2/iPlug2).
+
+6-voice polyphonic with per-voice analog variance, TPT ladder filter with OTA saturation,
+BBD chorus emulation, arpeggiator, portamento/unison mode, and 205 factory presets.
+Builds as AU, VST3, CLAP, and Standalone on macOS.
+
+See [docs/DSP_ARCHITECTURE.md](docs/DSP_ARCHITECTURE.md) for a detailed writeup of the
+signal chain and emulation techniques.
 
 ## Prerequisites
 
@@ -40,18 +47,33 @@ Default build configuration is `Debug`. For a release build:
 CONFIG=Release make vst3
 ```
 
-To build VST3 and immediately relaunch Reaper with a fresh plugin cache:
+Built plugins are installed to the standard macOS locations (`~/Library/Audio/Plug-Ins/`).
 
-```bash
-make reaper
+Run `make help` for all available targets.
+
+## Project Structure
+
+```
+KR106.cpp / KR106.h          Plugin class (UI layout, MIDI routing, param handling)
+KR106Controls.h               Custom iPlug2 controls (keyboard, sliders, scope, etc.)
+KR106_Presets.h                205 factory presets (auto-generated)
+config.h                       Plugin metadata and resource declarations
+
+DSP/
+  KR106_DSP.h                 Top-level DSP orchestrator, HPF, signal routing
+  KR106Voice.h                Per-voice: VCF, ADSR, oscillator mixing, portamento
+  KR106Oscillators.h          PolyBLEP saw, pulse, sub, noise generators
+  KR106Chorus.h               MN3009 BBD chorus with Hermite interpolation
+  KR106LFO.h                  Global triangle LFO with delay envelope
+  KR106Arpeggiator.h          Note sequencer (Up / Down / Up-Down)
+
+docs/
+  DSP_ARCHITECTURE.md         Detailed DSP design documentation
+  HOLD_ARP_FLOW.md            Hold + arpeggiator interaction flow
+
+tools/preset-gen/             Original patch files and conversion utilities
 ```
 
-Built plugins are placed in the standard system locations (`~/Library/Audio/Plug-Ins/`, etc.) by the Xcode project.
+## License
 
-## Presets
-
-Presets are compiled into `KR106_Presets.h` from `Factory_Patches.pat`. To regenerate after editing the patch file:
-
-```bash
-make presets
-```
+This project is licensed under the [GNU General Public License v3.0](LICENSE).

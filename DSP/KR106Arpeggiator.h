@@ -24,6 +24,8 @@ struct Arpeggiator
   float mSampleRate = 44100.f;
 
   std::vector<int> mHeldNotes; // sorted ascending
+
+  Arpeggiator() { mHeldNotes.reserve(128); }
   int mStepIndex = 0;
   int mDirection = 1;  // 1=ascending, -1=descending (for Up/Down)
   float mPhase = 0.f;

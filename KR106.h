@@ -68,8 +68,7 @@ enum EParams
 enum ECtrlTags
 {
   kCtrlTagKeyboard = 0,
-  kCtrlTagScope,
-  kCtrlTagAnalyzer
+  kCtrlTagScope
 };
 
 using namespace iplug;

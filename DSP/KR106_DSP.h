@@ -112,6 +112,11 @@ public:
     }
 
     mSynth.SetPitchBendRange(12); // ±12 semitones for external MIDI
+
+    // Pre-allocate audio buffers so ProcessBlock never triggers heap allocation
+    mLFOBuffer.reserve(4096);
+    mSyncBuffer.reserve(4096);
+    mModulations.resize(kNumModulations, nullptr);
   }
 
   static double MidiToPitch(int note) { return (note - 69) / 12.0; }

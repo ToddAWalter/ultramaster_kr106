@@ -1,23 +1,40 @@
+# macOS
+.DS_Store
+Icon?
+
+# Xcode
+*.xcuserdata
+*.xcschememanagement.plist
+*.mode1v3
+DerivedData/
+build-*
+
+# Visual Studio
 *.vs
-*.exe
 *.sdf
 *.opensdf
-*.zip
 *.suo
 *.ncb
 *.vcproj.*
-*.pkg
-*.dmg
-*.depend
-*.layout
-*.mode1v3
 *.db
 *.LSOverride
-*.xcuserdata
-*.xcschememanagement.plist
-build-*
-ipch/*
-gui/*
+ipch/
 
-Icon?
-.DS_Stor*
+# Build artifacts
+*.exe
+*.o
+*.obj
+*.dylib
+
+# Packages
+*.pkg
+*.dmg
+*.zip
+
+# IDE
+*.depend
+*.layout
+.vscode/
+
+# iPlug2
+gui/

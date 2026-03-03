@@ -35,7 +35,8 @@ clean:
 	rm -rf "$(HOME)/Library/Audio/Plug-Ins/CLAP/KR106.clap"
 
 presets:
-	python3 scripts/gen_presets.py
+	@echo "Preset generation disabled — KR106_Presets.h is pre-built."
+	@echo "Source files are in tools/preset-gen/ if you need to regenerate."
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

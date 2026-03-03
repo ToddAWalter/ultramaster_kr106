@@ -180,6 +180,7 @@ struct BBDLine
     //    Single pole (~-6dB/oct) matches the gentle BBD rolloff;
     //    combined with pre/post 15kHz filters gives ~-18dB/oct total.
     float delaySec = delaySamples / mSampleRate;
+    if (delaySec < 1e-6f) delaySec = 1e-6f;
     float bbdNyquist = static_cast<float>(kNumStages) / (4.f * delaySec);
     float nyq = mSampleRate * 0.45f;
     float cutoff = std::min(bbdNyquist, nyq);
