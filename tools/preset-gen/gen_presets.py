@@ -219,7 +219,7 @@ def pat_patch_to_params(p):
     return [
         0.0,                                           # kBenderDco (not stored)
         0.0,                                           # kBenderVcf (not stored)
-        90.0,                                          # kArpRate (default)
+        120.0,                                         # kArpRate (default)
         p['lfo_rate'],                                     # kLfoRate (raw 0-1 slider)
         p['lfo_delay'],                                # kLfoDelay
         p['dco_lfo'],                                  # kDcoLfo
@@ -256,6 +256,11 @@ def pat_patch_to_params(p):
         0.0,                                           # kBender (not stored)
         0.0,                                           # kTuning (not stored)
         1,                                             # kPower (always on)
+        2,                                             # kPortaMode (default Poly)
+        0.0,                                           # kPortaRate (default 0)
+        0,                                             # kTransposeOffset (default 0)
+        0.0,                                           # kBenderLfo (default 0)
+        1,                                             # kAdsrMode (1=Juno-106)
     ]
 
 
@@ -305,9 +310,14 @@ def binary_patch_to_params(p):
         pwm_mode,
         int(round(clamp(p['vcf_env_invert'], 0.0, 1.0))),
         int(round(clamp(p['vca_mode'], 0.0, 1.0))),
-        0.0,
-        0.0,
-        1,
+        0.0,                                           # kBender (not stored)
+        0.0,                                           # kTuning (not stored)
+        1,                                             # kPower (always on)
+        2,                                             # kPortaMode (default Poly)
+        0.0,                                           # kPortaRate (default 0)
+        0,                                             # kTransposeOffset (default 0)
+        0.0,                                           # kBenderLfo (default 0)
+        1,                                             # kAdsrMode (1=Juno-106)
     ]
 
 

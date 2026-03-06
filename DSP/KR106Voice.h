@@ -23,6 +23,8 @@ namespace kr106 {
 struct VCF
 {
   float mS[4] = {}; // integrator states
+  bool mBypassLoopClamp = false; // set true to disable high-freq resonance limiter
+  bool mNonlinearStages = true; // set true for per-stage OTA tanh (IR3109 model)
   uint32_t mNoiseSeed = 123456789u; // thermal noise PRNG state
 
   // 2x oversampling: HIIR polyphase filters for anti-imaging/aliasing
@@ -58,6 +60,32 @@ struct VCF
     if (x < -3.f) return -1.f;
     float x2 = x * x;
     return x * (27.f + x2) / (27.f + 9.f * x2);
+  }
+
+  // Derivative of OTASat (sech² approximant), for Newton-Raphson.
+  static float OTASatDeriv(float x)
+  {
+    if (x > 3.f || x < -3.f) return 0.f;
+    float x2 = x * x;
+    float d = 27.f + 9.f * x2;
+    return 27.f * (27.f - 3.f * x2) / (d * d);
+  }
+
+  // Nonlinear one-pole OTA-C stage: solves y = s + g*tanh(x - y)
+  // via one Newton-Raphson iteration from the linear TPT estimate.
+  static float NLStage(float& s, float x, float g, float g1)
+  {
+    // Linear estimate (exact if tanh were linear)
+    float y = s + g1 * (x - s);
+    // One NR iteration: f(y) = y - s - g*tanh(x-y), f'(y) = 1 + g*sech²(x-y)
+    float diff = x - y;
+    float t = OTASat(diff);
+    float f = y - s - g * t;
+    float df = 1.f + g * OTASatDeriv(diff);
+    y -= f / df;
+    // Trapezoidal state update
+    s = 2.f * y - s;
+    return y;
   }
 
   // frq: normalized cutoff [0, ~0.9] where 1.0 = Nyquist (base rate)
@@ -110,30 +138,49 @@ private:
     // self-oscillation character. Above 0.3, progressively reduce the
     // loop gain to prevent the resonance limit cycle from producing
     // audible aliased harmonics near Nyquist.
-    float maxLoop = 1.2f - std::max(frq - 0.3f, 0.f);
-    maxLoop = std::max(maxLoop, 0.4f);
-    float maxK = maxLoop / std::max(G, 1e-6f);
-    k = std::min(k, maxK);
+    if (!mBypassLoopClamp)
+    {
+      float maxLoop = 1.2f - std::max(frq - 0.3f, 0.f);
+      maxLoop = std::max(maxLoop, 0.4f);
+      float maxK = maxLoop / std::max(G, 1e-6f);
+      k = std::min(k, maxK);
+    }
 
     float S = mS[0] * g1 * g1 * g1
             + mS[1] * g1 * g1
             + mS[2] * g1
             + mS[3];
 
-    // Feedback-corrected input — OTA saturation on the feedback sum
-    // limits resonance amplitude. This is where the analog character
-    // lives: the feedback OTA is what shapes the resonance peak.
-    float u = (input - k * OTASat(S)) / (1.f + k * G);
+    // Q compensation: the Juno-6 BA662 feeds a portion of the input
+    // signal alongside the feedback, boosting drive at high resonance.
+    // This counteracts the passband volume drop and pushes the OTA
+    // nonlinearities harder — a key part of the Juno's warmth.
+    float comp = 1.f + res * res * 0.5f;  // gentle quadratic ramp
+    float u = (input * comp - k * OTASat(S)) / (1.f + k * G);
 
-    // 4 cascaded linear 1-pole TPT stages.
-    // Linear stages ensure the predictor above is exact, preventing
-    // the instability that per-stage nonlinearity caused during fast
-    // cutoff sweeps with high resonance.
-    float v, s;
-    s = mS[0]; v = g1 * (u - s);   mS[0] = s + 2.f * v; float lp1 = s + v;
-    s = mS[1]; v = g1 * (lp1 - s); mS[1] = s + 2.f * v; float lp2 = s + v;
-    s = mS[2]; v = g1 * (lp2 - s); mS[2] = s + 2.f * v; float lp3 = s + v;
-    s = mS[3]; v = g1 * (lp3 - s); mS[3] = s + 2.f * v; float lp4 = s + v;
+    float lp4;
+    if (mNonlinearStages)
+    {
+      // Per-stage OTA tanh nonlinearity: models the IR3109 differential
+      // pair in each stage. tanh(Vin - Vout) acts as a slew-rate limiter,
+      // causing signal-dependent cutoff shift and subtle harmonic generation.
+      // Each stage solves y = s + g*tanh(x - y) via one Newton-Raphson
+      // iteration from the linear estimate, avoiding the artifacts that
+      // the explicit form produces at high cutoff + resonance.
+      float lp1 = NLStage(mS[0], u,   g, g1);
+      float lp2 = NLStage(mS[1], lp1, g, g1);
+      float lp3 = NLStage(mS[2], lp2, g, g1);
+      lp4       = NLStage(mS[3], lp3, g, g1);
+    }
+    else
+    {
+      // Linear stages: predictor above is exact, unconditionally stable.
+      float v, s;
+      s = mS[0]; v = g1 * (u - s);   mS[0] = s + 2.f * v; float lp1 = s + v;
+      s = mS[1]; v = g1 * (lp1 - s); mS[1] = s + 2.f * v; float lp2 = s + v;
+      s = mS[2]; v = g1 * (lp2 - s); mS[2] = s + 2.f * v; float lp3 = s + v;
+      s = mS[3]; v = g1 * (lp3 - s); mS[3] = s + 2.f * v; lp4       = s + v;
+    }
 
     // Flush denormals from integrator states
     for (auto& st : mS)

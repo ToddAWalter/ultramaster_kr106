@@ -489,6 +489,20 @@ void KR106::ProcessMidiMsg(const IMidiMsg& msg)
 
 void KR106::OnParamChange(int paramIdx)
 {
+  // During preset restore, skip live performance params — their values are
+  // preserved by UnserializeState and must not be applied from the preset.
+  if (mRestoringPreset)
+  {
+    switch (paramIdx)
+    {
+      case kTuning: case kTranspose: case kHold:
+      case kArpeggio: case kArpRate: case kArpMode: case kArpRange:
+      case kPortaMode: case kPortaRate: case kTransposeOffset:
+        return;
+      default: break;
+    }
+  }
+
   if (paramIdx == kPower)
   {
     mPowerOn = GetParam(kPower)->Bool();
