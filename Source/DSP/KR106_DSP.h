@@ -7,6 +7,7 @@
 #include <bitset>
 #include <memory>
 #include <cstdint>
+#include <climits>
 
 #include "KR106Voice.h"
 #include "KR106LFO.h"
