@@ -192,17 +192,25 @@ private:
     float noiseLevel = 1e-3f / (1.f + stateEnergy * 1000.f);
     input += white * noiseLevel;
 
-    // Exponential resonance CV: TR1 (2SA1015-GR PNP) exponential
-    // converter feeds BA662 OTA control on both Juno-6 and Juno-106.
-    // Measured Juno-6 peak heights fit a single exponential model:
-    // feedback_gain = 0.971 * exp(0.033 * x); steepness c=3.5.
-    // k = 0.179 * (exp(3.5*res) - 1): self-oscillation onset at res ≈ 0.9.
-    // FIXME: calibrated from Juno-6 measurements. NOT YET MEASURED on a
-    // real 106. Same topology (ext transistor -> linear BA662) but different
-    // resistor scaling (20K trim + 27K vs Juno-6's 15K/1.5K/1.5K). Expect
-    // same exponential shape with different a/b coefficients. Needs
-    // equivalent hardware measurement from a 106 to fit.
-    float k = 0.179f * (expf(3.5f * res) - 1.f);
+    // Resonance CV: exponential converter (TR1, 2SA1015-GR PNP) feeds
+    // BA662 OTA control. Feedback gain follows k = a*(exp(b*res) - 1).
+    //
+    // Calibrated from Juno-6 hardware, March 2026:
+    //   Saw C1 (32.7 Hz) through VCF, LFO sweep across full cutoff range,
+    //   recorded at R=0/3/5/7 via direct line out at 88.2 kHz.
+    //   Filter response extracted by dividing out 1/n saw spectrum at each
+    //   harmonic, then matching transition-region slope (+1 oct past -6dB)
+    //   against the 4-pole TPT cascade simulation (2x oversampled).
+    //
+    //   R=3 (res=0.3): k ≈ 0.91, measured slope ≈ -18.9 dB/oct
+    //   R=5 (res=0.5): k ≈ 1.94, measured slope ≈ -22.7 dB/oct
+    //   R=7 (res=0.7): k ≈ 3.52, measured slope ≈ -26.8 dB/oct
+    //   R=0 slope (-13.1 dB/oct) matches sim with k=0 (no fit needed).
+    //
+    // Juno-106 NOT YET MEASURED. Same topology (ext transistor → BA662)
+    // but different resistor scaling (20K trim + 27K vs 6's 15K/1.5K/1.5K).
+    // Expect same exponential shape with different a/b coefficients.
+    float k = 1.024f * (expf(2.128f * res) - 1.f);
 
     // Precompute gains for the 4-pole cascade solution
     float g1 = g / (1.f + g);  // one-pole gain
