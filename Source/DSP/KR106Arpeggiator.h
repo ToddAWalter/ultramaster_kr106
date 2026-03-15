@@ -50,7 +50,7 @@ struct Arpeggiator
   * is linear taper but the perceived curve is naturally logarithmic.
   */
   static float arpRate(float t) {
-    // Our original 2001 linear fader code    return 15.f + t * 1785.f;
+    // Our original 2001 linear fader code return 15.f + t * 1785.f;
 
     // Schmitt-trigger relaxation oscillator: f in Hz, convert to BPM
     // Invert slider: 0=slowest (max resistance), 1=fastest (min resistance)

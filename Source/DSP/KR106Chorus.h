@@ -181,6 +181,7 @@ struct Chorus
   BBDLine mLine0, mLine1;
   ChorusLFO mLFO;          // single LFO — L gets +output, R gets -output
   int mMode = 0;           // 0=off, 1=I, 2=II, 3=I+II
+  int mPendingMode = 0;    // deferred mode for click-free mode-to-mode switches
   bool mUseSine = false;   // true for mode I+II (8 Hz vibrato)
   float mSampleRate = 44100.f;
 
@@ -207,8 +208,12 @@ struct Chorus
   static constexpr float kChorusI_IIRate  = 8.0f;
   static constexpr float kChorusI_IIDepth = 0.42f;
 
-  // BBD adds ~3-5 dB gain. Measured wet level / dry level ≈ 1.5x.
-  static constexpr float kBBDGain = 1.5f;
+  // Dry/wet mix from schematic: IC8 inverting summer per channel.
+  //   Dry: -R70/R71 = -100K/47K = gain 2.128
+  //   Wet: -R70/R72 = -100K/39K = gain 2.564
+  // Normalized to unit sum: dry = 0.454, wet = 0.546.
+  static constexpr float kDryGain = 2.128f / (2.128f + 2.564f); // 0.454
+  static constexpr float kWetGain = 2.564f / (2.128f + 2.564f); // 0.546
 
   // Crossfade for mode switching (avoids clicks)
   static constexpr float kFadeMs = 5.f;
@@ -246,9 +251,17 @@ struct Chorus
 
   void SetMode(int newMode)
   {
-    if (newMode == mMode) return;
+    if (newMode == mMode && newMode == mPendingMode) return;
 
-    int oldMode = mMode;
+    if (mMode > 0 && newMode > 0)
+    {
+      // Mode-to-mode: fade out, switch at zero, fade back in
+      mPendingMode = newMode;
+      mFadeTarget = 0.f;
+      return;
+    }
+
+    mPendingMode = newMode;
     mMode = newMode;
 
     if (mMode == 0)
@@ -257,19 +270,11 @@ struct Chorus
       return;
     }
 
-    if (oldMode == 0)
-    {
-      mLine0.Clear();
-      mLine1.Clear();
-      mLFO.Reset();
-    }
-
     ConfigureMode();
     mFadeTarget = 1.f;
   }
 
-  // Both outputs are BBD taps — no dry signal.
-  // The Juno-6 "Mono" and "Stereo" jacks are the two BBD outputs.
+  // Each channel is an inverting summer mixing dry (HPF out) + wet (BBD out).
   void Process(float input, float& outL, float& outR)
   {
     // Crossfade
@@ -278,8 +283,31 @@ struct Chorus
     else if (mFade > mFadeTarget)
       mFade = std::max(mFade - mFadeInc, mFadeTarget);
 
+    // When fade reaches zero, apply any pending mode switch
+    if (mFade <= 0.f && mPendingMode != mMode)
+    {
+      mMode = mPendingMode;
+      if (mMode > 0)
+      {
+        ConfigureMode();
+        mDepth = mTargetDepth;
+        mFadeTarget = 1.f;
+      }
+    }
+
+    // Always write to delay lines and keep filter state warm
+    // so chorus engages without clicks.
     if (mFade <= 0.f)
     {
+      mLine0.mBuf[mLine0.mWPos & mLine0.mMask] = input;
+      mLine0.mWPos = (mLine0.mWPos + 1) & mLine0.mMask;
+      mLine1.mBuf[mLine1.mWPos & mLine1.mMask] = input;
+      mLine1.mWPos = (mLine1.mWPos + 1) & mLine1.mMask;
+      mLine0.mBBDFilter.mS = input;
+      mLine1.mBBDFilter.mS = input;
+      // Keep LFO running so phase is arbitrary on engage (no click)
+      mLFO.mPhase += mLFO.mInc;
+      if (mLFO.mPhase >= 1.f) mLFO.mPhase -= 1.f;
       outL = outR = input;
       return;
     }
@@ -303,11 +331,12 @@ struct Chorus
     float wet0 = mLine0.Process(input, delay0samp);
     float wet1 = mLine1.Process(input, delay1samp);
 
-    // Crossfade wet/dry and BBD gain together so both reach unity
-    // at mFade=0, matching the bypass path with no level discontinuity.
-    float gain = 1.f + mFade * (kBBDGain - 1.f);
-    outL = (input + mFade * (wet0 - input)) * gain;
-    outR = (input + mFade * (wet1 - input)) * gain;
+    // Inverting summer: dry×(100K/47K) + wet×(100K/39K), normalized.
+    // Crossfade from bypass (dry only) to schematic mix.
+    float dryMix = 1.f - mFade * (1.f - kDryGain);
+    float wetMix = mFade * kWetGain;
+    outL = dryMix * input + wetMix * wet0;
+    outR = dryMix * input + wetMix * wet1;
   }
 
 private:

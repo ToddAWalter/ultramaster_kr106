@@ -11,6 +11,7 @@
 
 #include "KR106Voice.h"
 #include "KR106LFO.h"
+#include "KR106VcfFreqJ6.h"
 #include "KR106Arpeggiator.h"
 #include "KR106Chorus.h"
 
@@ -20,6 +21,7 @@
 enum EModulations
 {
   kModLFO = 0,
+  kModLFORaw, // raw triangle waveform (before onset envelope), for J106 integer VCF
   kNumModulations
 };
 
@@ -116,6 +118,7 @@ public:
       mVoices.push_back(std::move(voice));
     }
     mLFOBuffer.reserve(4096);
+    mLFORawBuffer.reserve(4096);
     mSyncBuffer.reserve(4096);
     mModulations.resize(kNumModulations, nullptr);
   }
@@ -138,7 +141,8 @@ public:
     float vel = velocity / 127.f;
     bool anyBusy = false;
     ForEachVoice([&](kr106::Voice<T>& v) { anyBusy |= v.GetBusy(); });
-    ForEachVoice([pitch, vel, anyBusy](kr106::Voice<T>& v) {
+    ForEachVoice([pitch, vel, anyBusy, note](kr106::Voice<T>& v) {
+      v.mMidiNote = note;
       v.SetUnisonPitch(pitch);
       v.Trigger(vel, anyBusy);
     });
@@ -187,6 +191,7 @@ public:
   void TriggerVoice(int voiceIdx, int note, int velocity)
   {
     auto& v = *mVoices[voiceIdx];
+    v.mMidiNote = note;
     v.SetUnisonPitch(MidiToPitch(note));
     v.Trigger(velocity / 127.f, v.GetBusy());
     mVoiceNote[voiceIdx] = note;
@@ -261,6 +266,7 @@ public:
     if (static_cast<int>(mLFOBuffer.size()) < nFrames)
     {
       mLFOBuffer.resize(nFrames, T(0));
+      mLFORawBuffer.resize(nFrames, T(0));
       mSyncBuffer.resize(nFrames, T(0));
       mModulations.resize(kNumModulations, nullptr);
     }
@@ -279,42 +285,42 @@ public:
     mLFO.SetVoiceActive(anyActive);
 
     for (int s = 0; s < nFrames; s++)
+    {
       mLFOBuffer[s] = static_cast<T>(mLFO.Process());
+      mLFORawBuffer[s] = static_cast<T>(mLFO.mLastTri);
+    }
 
-    mModulations[kModLFO] = mLFOBuffer.data();
+    mModulations[kModLFO]    = mLFOBuffer.data();
+    mModulations[kModLFORaw] = mLFORawBuffer.data();
 
     mArp.Process(nFrames,
       [this](int note, int offset) { SendToSynth(note, true,  127, offset); },
       [this](int note, int offset) { SendToSynth(note, false, 0,   offset); });
 
     for (auto& v : mVoices)
-      if (v->GetBusy())
-        v->ProcessSamplesAccumulating(mModulations.data(), outputs, kNumModulations, nOutputs, 0, nFrames);
+    {
+      if (!v->GetBusy()) continue;
+      v->mLfoEnvAmp = mLFO.mAmp; // pass LFO onset envelope for J106 integer VCF
+      v->ProcessSamplesAccumulating(mModulations.data(), outputs, kNumModulations, nOutputs, 0, nFrames);
+    }
 
     for (int s = 0; s < nFrames; s++)
       outputs[0][s] = static_cast<T>(mHPF.Process(static_cast<float>(outputs[0][s])));
 
-    if (mChorus.mMode == 0 && mChorus.mFade <= 0.f)
-    {
-      if (nOutputs > 1)
-        memcpy(outputs[1], outputs[0], nFrames * sizeof(T));
-    }
-    else
-    {
-      for (int s = 0; s < nFrames; s++)
-      {
-        float mono = static_cast<float>(outputs[0][s]);
-        float L, R;
-        mChorus.Process(mono, L, R);
-        outputs[0][s] = static_cast<T>(L);
-        if (nOutputs > 1) outputs[1][s] = static_cast<T>(R);
-      }
-    }
+    // Master VCA before chorus — matches hardware signal chain
+    // (JU-106 Service Notes: VCA IC5 → Chorus BBD).
+    for (int s = 0; s < nFrames; s++)
+      outputs[0][s] *= static_cast<T>(mVcaLevel);
 
+    // Always call Chorus::Process — even when bypassed it keeps the
+    // delay lines, filter state, and LFO warm for click-free engagement.
     for (int s = 0; s < nFrames; s++)
     {
-      outputs[0][s] *= static_cast<T>(mVcaLevel);
-      if (nOutputs > 1) outputs[1][s] *= static_cast<T>(mVcaLevel);
+      float mono = static_cast<float>(outputs[0][s]);
+      float L, R;
+      mChorus.Process(mono, L, R);
+      outputs[0][s] = static_cast<T>(L);
+      if (nOutputs > 1) outputs[1][s] = static_cast<T>(R);
     }
   }
 
@@ -332,6 +338,7 @@ public:
     mChorus.Init(mSampleRate);
     mArp.SetSampleRate(mSampleRate);
     mLFOBuffer.resize(blockSize);
+    mLFORawBuffer.resize(blockSize);
     mSyncBuffer.resize(blockSize);
     mModulations.resize(kNumModulations);
   }
@@ -400,11 +407,17 @@ public:
   float mSliderArpRate = 0.06f;
   float mSliderDcoLfo = 0.f;
   float mSliderVcfLfo = 0.f;
+  float mSliderLfoDelay = 0.f;
+  float mSliderVcfFreq = 0.5f;
+  float mSliderVcfEnv = 0.f;
+  float mSliderVcfKbd = 0.f;
+  float mSliderBenderVcf = 0.f;
 
   std::bitset<128> mHeldNotes;
   std::bitset<128> mKeysDown;
   bool mSuppressHoldRelease = false;
   std::vector<T> mLFOBuffer;
+  std::vector<T> mLFORawBuffer; // raw triangle (before onset envelope)
   std::vector<T> mSyncBuffer;
   std::vector<T*> mModulations;
 

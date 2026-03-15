@@ -114,7 +114,73 @@ public:
     juce::Desktop::getInstance().getMainMouseSource().setScreenPosition(screenPos.toFloat());
   }
 
+  void mouseDoubleClick(const juce::MouseEvent&) override
+  {
+    if (!mParam) return;
+    if (dynamic_cast<juce::AudioParameterBool*>(mParam)) return;
+    if (dynamic_cast<juce::AudioParameterInt*>(mParam)) return;
+    if (mEditor) dismissEdit();
+
+    if (mTooltip) mTooltip->hide();
+
+    // Find a parent large enough to host the editor overlay
+    auto* parent = mTooltip ? mTooltip->getParentComponent() : getTopLevelComponent();
+    if (!parent) return;
+
+    mEditor = std::make_unique<juce::TextEditor>();
+    mEditor->setFont(juce::FontOptions(11.f));
+    mEditor->setColour(juce::TextEditor::backgroundColourId, juce::Colour(0, 0, 0));
+    mEditor->setColour(juce::TextEditor::textColourId, juce::Colour(255, 255, 255));
+    mEditor->setColour(juce::TextEditor::outlineColourId, juce::Colour(128, 128, 128));
+    mEditor->setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(128, 128, 128));
+    mEditor->setColour(juce::TextEditor::highlightColourId, juce::Colour(80, 80, 80));
+    mEditor->setJustification(juce::Justification::centred);
+    mEditor->setSelectAllWhenFocused(true);
+
+    // Pre-fill with panel value (0–10 scale)
+    float panelVal = mParam->getValue() * 10.f;
+    mEditor->setText(juce::String(panelVal, 2));
+
+    // Position below slider, matching tooltip placement
+    auto srcBounds = parent->getLocalArea(getParentComponent(), getBounds());
+    int tw = 50, th = 16;
+    int tx = srcBounds.getCentreX() - tw / 2;
+    int ty = srcBounds.getBottom() + 2;
+    auto pb = parent->getLocalBounds();
+    tx = juce::jlimit(0, pb.getWidth() - tw, tx);
+    ty = juce::jmin(pb.getHeight() - th, ty);
+    mEditor->setBounds(tx, ty, tw, th);
+
+    parent->addAndMakeVisible(mEditor.get());
+    mEditor->grabKeyboardFocus();
+
+    mEditor->onReturnKey = [this]() { commitEdit(); };
+    mEditor->onEscapeKey = [this]() { dismissEdit(); };
+    mEditor->onFocusLost = [this]() { dismissEdit(); };
+  }
+
 private:
+  void commitEdit()
+  {
+    if (!mEditor || !mParam) return;
+    float typed = mEditor->getText().getFloatValue();
+    float normalized = juce::jlimit(0.f, 1.f, typed / 10.f);
+    mParam->beginChangeGesture();
+    mParam->setValueNotifyingHost(normalized);
+    mParam->endChangeGesture();
+    repaint();
+    dismissEdit();
+  }
+
+  void dismissEdit()
+  {
+    if (!mEditor) return;
+    auto editor = std::move(mEditor);
+    editor->onFocusLost = nullptr;
+    if (auto* parent = editor->getParentComponent())
+      parent->removeChildComponent(editor.get());
+  }
+
   int getNumSteps() const
   {
     if (dynamic_cast<juce::AudioParameterBool*>(mParam)) return 1;
@@ -126,6 +192,7 @@ private:
   juce::RangedAudioParameter* mParam = nullptr;
   KR106Tooltip* mTooltip = nullptr;
   juce::Image mHandleImg;
+  std::unique_ptr<juce::TextEditor> mEditor;
   float mAccumVal = 0.f;
   float mLastRawDY = 0.f;
   bool mDragging = false;

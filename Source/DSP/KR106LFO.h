@@ -1,13 +1,19 @@
 #pragma once
 
 #include <cmath>
+#include <algorithm>
+#include "KR106ADSR.h" // for ADSR::AttackIncFromSlider
 
 // Global triangle LFO with delayed onset
 // Ported from kr106_lfo.h/kr106_lfo.C
 //
+// Juno-6:   RC exponential delay envelope (eases in at top, capacitor curve)
+// Juno-106: Two-stage digital envelope from D7811G firmware:
+//           1. Holdoff — silent period, duration from attack table
+//           2. Ramp    — linear fade-in, rate from 8-entry LFO delay ramp table
+//
 // Improvements over naive version:
 // - Rounded triangle (soft-clipped peaks, matching capacitor charge curve)
-// - RC exponential delay envelope (eases in at top, not linear ramp)
 // - Free-running in auto mode (delay envelope persists across legato notes)
 
 namespace kr106
@@ -18,8 +24,9 @@ struct LFO
   float mPos        = 0.f; // phase [0, 1)
   float mFreq       = 0.f; // cycles per sample
   float mAmp        = 0.f; // current amplitude envelope [0, 1]
-  float mDelayCoeff = 0.f; // RC envelope coefficient (0 = instant)
-  float mDelayParam = 0.f; // stored delay parameter
+  float mLastTri    = 0.f; // raw triangle waveform [-1,+1] before envelope
+  float mDelayCoeff = 0.f; // J6: RC envelope coefficient (0 = instant)
+  float mDelayParam = 0.f; // J6: tau in seconds
   float mSampleRate = 44100.f;
   bool mActive      = false; // any voice currently gated?
   bool mWasActive   = false;
@@ -27,11 +34,17 @@ struct LFO
   bool mTrigger     = false; // manual trigger state
   bool mJ6Mode      = false; // true = Juno-6, false = Juno-106
 
+  // --- J106 two-stage delay state ---
+  float mHoldoffRemaining = 0.f; // samples remaining in holdoff phase
+  float mRampPerSample    = 0.f; // depth increment per sample during ramp
+  bool  mInHoldoff        = false;
+  float mSlider           = 0.f; // stored slider value for reset
+
   float lfoFreq(float t) { return mJ6Mode ? lfoFreqJ6(t) : lfoFreqJ106(t); }
 
-  // FIXME(kr106) Measure LFO frq compared to slider voltage on Hardward Juno 6
-  static float lfoFreqJ6(float t) { 
-    // linear mapping from our original 2001 codebaser
+  // FIXME(kr106) Measure LFO frq compared to slider voltage on hardware Juno 6
+  static float lfoFreqJ6(float t) {
+    // linear mapping from our original 2001 codebase
     return ( ( 18.f + t * 1182.f ) / 60.f );
   }
 
@@ -58,10 +71,72 @@ struct LFO
     mFreq       = lfoFreq(slider) / sampleRate;
   }
 
-  void SetDelay(float delayParam)
+  // FIXME(kr106) Measure LFO delay vs slider voltage on hardware Juno-6
+  // Returns tau in seconds for RC exponential envelope.
+  static float lfoDelayJ6(float t) { return t * 1.5f; }
+
+  // --- Juno-106 LFO delay: two-stage envelope from D7811G firmware ---
+  //
+  // Stage 1 — Holdoff: accumulator += attackTable[pot] per tick (238.1 Hz).
+  //   Completes when accumulator >= 0x4000. LFO depth = 0 during this phase.
+  //   Uses the same attack rate table as the ADSR (0B60_envAtkTbl).
+  //
+  // Stage 2 — Ramp: accumulator += rampTable[pot>>4] per tick.
+  //   LFO depth = high byte of 16-bit accumulator / 255.
+  //   Linear fade-in until 16-bit overflow, then clamp to full depth.
+  //   Ramp table (0B30_LfoDelayRampTbl): 8 entries indexed by pot >> 4.
+
+  static constexpr float kTickRate = 238.1f; // D7811G main loop rate (1/4.2ms)
+
+  // Clean-room LFO delay ramp table (0B30_LfoDelayRampTbl).
+  // 8 entries, indexed by (pot >> 4). Larger value = faster ramp.
+  static constexpr uint16_t kLfoRampTable[8] = {
+    0xFFFF, // pot 0-15:   instant ramp
+    0x0419, // pot 16-31:  fast
+    0x020C, // pot 32-47
+    0x015E, // pot 48-63
+    0x0100, // pot 64-79:  slow
+    0x0100, // pot 80-95:  (same)
+    0x0100, // pot 96-111: (same)
+    0x0100  // pot 112-127:(same)
+  };
+
+  // Compute holdoff duration in seconds for J106 LFO delay.
+  // Uses the same clean-room attack rate function as the ADSR.
+  static float lfoHoldoffSeconds106(float slider)
   {
-    mDelayParam = delayParam;
-    RecalcDelay();
+    uint16_t inc = ADSR::AttackIncFromSlider(slider);
+    if (inc >= ADSR::kEnvMax) return 0.f; // instant
+    // ticks to reach 0x4000: accumulator >= 0x4000 after ceil(0x4000/inc) ticks
+    float ticks = static_cast<float>(ADSR::kEnvMax) / static_cast<float>(inc);
+    return ticks / kTickRate;
+  }
+
+  // Compute ramp rate (depth per second) for J106 LFO delay.
+  // Depth = high byte of 16-bit accumulator / 255, so full scale at overflow.
+  // Rate per tick = rampTable[idx] / 65536 (normalized 0..1).
+  // Rate per second = rate_per_tick * tickRate.
+  static float lfoRampPerSecond106(float slider)
+  {
+    int pot = static_cast<int>(slider * 127.f + 0.5f);
+    int idx = std::clamp(pot >> 4, 0, 7);
+    uint16_t rampInc = kLfoRampTable[idx];
+    if (rampInc == 0xFFFF) return 1e6f; // instant
+    return (static_cast<float>(rampInc) / 65536.f) * kTickRate;
+  }
+
+  void SetDelay(float slider)
+  {
+    mSlider = slider;
+    if (mJ6Mode)
+    {
+      mDelayParam = lfoDelayJ6(slider);
+      RecalcDelayJ6();
+    }
+    else
+    {
+      RecalcDelay106();
+    }
   }
 
   void SetMode(int mode) { mMode = mode; }
@@ -80,7 +155,10 @@ struct LFO
       if (mMode == 1 || mAmp <= 0.f)
       {
         mAmp = 0.f;
-        RecalcDelay();
+        if (mJ6Mode)
+          RecalcDelayJ6();
+        else
+          RecalcDelay106();
       }
     }
 
@@ -93,13 +171,32 @@ struct LFO
     if (mPos >= 1.f)
       mPos -= 1.f;
 
-    // RC exponential envelope: mAmp approaches 1.0 asymptotically
     if (newState && mAmp < 1.f)
     {
-      if (mDelayCoeff <= 0.f)
-        mAmp = 1.f; // instant
+      if (mJ6Mode)
+      {
+        // J6: RC exponential envelope approaching 1.0 asymptotically
+        if (mDelayCoeff <= 0.f)
+          mAmp = 1.f; // instant
+        else
+          mAmp += mDelayCoeff * (1.f - mAmp);
+      }
       else
-        mAmp += mDelayCoeff * (1.f - mAmp);
+      {
+        // J106: holdoff (silent) then linear ramp
+        if (mInHoldoff)
+        {
+          mHoldoffRemaining -= 1.f;
+          if (mHoldoffRemaining <= 0.f)
+            mInHoldoff = false;
+          // mAmp stays 0 during holdoff
+        }
+        else
+        {
+          mAmp += mRampPerSample;
+          if (mAmp >= 1.f) mAmp = 1.f;
+        }
+      }
     }
 
     // Rounded triangle: linear triangle with soft-clipped peaks
@@ -108,11 +205,12 @@ struct LFO
     // Soft-clip peaks using cubic saturation (matches capacitor rounding)
     tri = tri * (1.5f - 0.5f * tri * tri);
 
+    mLastTri = tri; // raw waveform before envelope (for J106 integer VCF path)
     return tri * mAmp;
   }
 
 private:
-  void RecalcDelay()
+  void RecalcDelayJ6()
   {
     if (mDelayParam <= 0.f)
     {
@@ -120,11 +218,18 @@ private:
     }
     else
     {
-      // RC time constant: delay param 0-1 maps to 0–1.5s (per KR-106 spec)
-      // Coefficient = 1 - exp(-1 / (tau * sampleRate))
-      float tau   = mDelayParam * 1.5f;
-      mDelayCoeff = 1.f - expf(-1.f / (tau * mSampleRate));
+      // mDelayParam is tau in seconds (from lfoDelayJ6)
+      mDelayCoeff = 1.f - expf(-1.f / (mDelayParam * mSampleRate));
     }
+  }
+
+  void RecalcDelay106()
+  {
+    float holdoff = lfoHoldoffSeconds106(mSlider);
+    mHoldoffRemaining = holdoff * mSampleRate;
+    mInHoldoff = (mHoldoffRemaining > 0.f);
+    float rampPerSec = lfoRampPerSecond106(mSlider);
+    mRampPerSample = rampPerSec / mSampleRate;
   }
 };
 

@@ -41,34 +41,62 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       ForEachVoice([value](kr106::Voice<T>& v) { v.mDcoNoise = static_cast<float>(value); });
       break;
     case kVcfFreq: {
-      float s = static_cast<float>(value);
-      float hz = std::exp(3.9367f + 3.5178f * s + 2.4454f * s * s);
-      ForEachVoice([hz](kr106::Voice<T>& v) { v.mVcfFreq = hz; });
+      mSliderVcfFreq = static_cast<float>(value);
+      float s = mSliderVcfFreq;
+      float hz = kr106::j6_vcf_freq_from_slider(s);
+      uint16_t cutoffInt = static_cast<uint16_t>(s * 0x3F80);
+      ForEachVoice([hz, cutoffInt](kr106::Voice<T>& v) {
+        v.mVcfFreq = hz;
+        v.mVcfCutoffInt = cutoffInt;
+      });
       break;
     }
     case kVcfRes:
+      // J106: linear passthrough (no scaling in firmware — pot value used directly)
       ForEachVoice([value](kr106::Voice<T>& v) { v.mVcfRes = static_cast<float>(value); });
       break;
-    case kVcfEnv:
-      ForEachVoice([value](kr106::Voice<T>& v) { v.mVcfEnv = static_cast<float>(value); });
+    case kVcfEnv: {
+      mSliderVcfEnv = static_cast<float>(value);
+      uint8_t envModInt = static_cast<uint8_t>(mSliderVcfEnv * 254.f);
+      ForEachVoice([value, envModInt](kr106::Voice<T>& v) {
+        v.mVcfEnv = static_cast<float>(value);
+        v.mVcfEnvModInt = envModInt;
+      });
       break;
+    }
     case kVcfLfo: {
       mSliderVcfLfo = static_cast<float>(value);
       float depth = (mAdsrMode == 0)
         ? kr106::Voice<T>::vcfLfoDepth6(mSliderVcfLfo)
         : kr106::Voice<T>::vcfLfoDepth106(mSliderVcfLfo);
-      ForEachVoice([depth](kr106::Voice<T>& v) { v.mVcfLfo = depth; });
+      uint8_t lfoDepthInt = static_cast<uint8_t>(mSliderVcfLfo * 254.f);
+      ForEachVoice([depth, lfoDepthInt](kr106::Voice<T>& v) {
+        v.mVcfLfo = depth;
+        v.mVcfLfoDepthInt = lfoDepthInt;
+      });
       break;
     }
-    case kVcfKbd:
-      ForEachVoice([value](kr106::Voice<T>& v) { v.mVcfKbd = static_cast<float>(value); });
+    case kVcfKbd: {
+      mSliderVcfKbd = static_cast<float>(value);
+      uint8_t keyTrackInt = static_cast<uint8_t>(mSliderVcfKbd * 254.f);
+      ForEachVoice([value, keyTrackInt](kr106::Voice<T>& v) {
+        v.mVcfKbd = static_cast<float>(value);
+        v.mVcfKeyTrackInt = keyTrackInt;
+      });
       break;
+    }
     case kBenderDco:
       ForEachVoice([value](kr106::Voice<T>& v) { v.mBendDco = static_cast<float>(value); });
       break;
-    case kBenderVcf:
-      ForEachVoice([value](kr106::Voice<T>& v) { v.mBendVcf = static_cast<float>(value); });
+    case kBenderVcf: {
+      mSliderBenderVcf = static_cast<float>(value);
+      uint8_t bendSensInt = static_cast<uint8_t>(mSliderBenderVcf * 255.f);
+      ForEachVoice([value, bendSensInt](kr106::Voice<T>& v) {
+        v.mBendVcf = static_cast<float>(value);
+        v.mVcfBendSensInt = bendSensInt;
+      });
       break;
+    }
     case kBenderLfo:
       ForEachVoice([value](kr106::Voice<T>& v) { v.mBendLfo = static_cast<float>(value); });
       break;
@@ -76,13 +104,24 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
     case kEnvA: {
       mSliderA = static_cast<float>(value);
       if (mAdsrMode == 0) {
-        // Measured from 1982 Juno-6 (completion times in seconds):
-        //   A=2: .018  A=3: .094  A=4: .126  A=5: .224
-        //   A=6: .586  A=7: .979  A=8: 1.066  A=9: 2.34
-        // Quadratic-exponential fit excluding dead spots at A=4, A=8.
-        // FIXME(kr106): re-measure with pot voltage readings for better accuracy.
-        float s = mSliderA;
-        float tau = 0.001500f * std::exp(11.7382f * s + -4.7207f * s * s);
+        // Measured from 1982 Juno-6: 6 voices at slider positions 1–9,
+        // averaged completion times (seconds):
+        //   A=1: .003  A=2: .016  A=3: .053  A=4: .115  A=5: .217
+        //   A=6: .427  A=7: .889  A=8: 1.089 A=9: 2.495
+        // Endpoints from spec: A=0: 1ms, A=10: 3s.
+        // Note: A/D/R pots are reverse-log (C-taper), so slider position maps
+        // nonlinearly to resistance — the dead spot at A=7-8 is a pot characteristic.
+        // Log-linear interpolation between tau values (tau = completion / ln(6),
+        // since kAttackTarget=1.2 and the RC reaches 1.0 at ln(6) time constants).
+        static constexpr float kAttackTau[11] = {
+          0.000558f, 0.001674f, 0.008762f, 0.029468f, 0.064015f, 0.120998f,
+          0.238481f, 0.495993f, 0.607950f, 1.392486f, 1.674332f
+        };
+        float s = mSliderA * 10.f;
+        int idx = static_cast<int>(s);
+        if (idx >= 10) idx = 9;
+        float frac = s - idx;
+        float tau = std::exp(std::log(kAttackTau[idx]) + frac * (std::log(kAttackTau[idx + 1]) - std::log(kAttackTau[idx])));
         ForEachVoice([tau](kr106::Voice<T>& v) { v.mADSR.SetAttackTau(tau); });
       } else {
         float s = mSliderA;
@@ -159,8 +198,13 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       SetParam(kEnvD, mSliderD);
       SetParam(kEnvR, mSliderR);
       SetParam(kLfoRate, mSliderLfoRate);
+      SetParam(kLfoDelay, mSliderLfoDelay);
       SetParam(kDcoLfo, mSliderDcoLfo);
       SetParam(kVcfLfo, mSliderVcfLfo);
+      SetParam(kVcfFreq, mSliderVcfFreq);
+      SetParam(kVcfEnv, mSliderVcfEnv);
+      SetParam(kVcfKbd, mSliderVcfKbd);
+      SetParam(kBenderVcf, mSliderBenderVcf);
       break;
     }
     case kBender:
@@ -172,7 +216,8 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       mLFO.SetRate(mSliderLfoRate, mSampleRate);
       break;
     case kLfoDelay:
-      mLFO.SetDelay(static_cast<float>(value));
+      mSliderLfoDelay = static_cast<float>(value);
+      mLFO.SetDelay(mSliderLfoDelay);
       break;
     case kLfoMode:
       mLFO.SetMode(static_cast<int>(value));
@@ -183,8 +228,14 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       break;
 
     case kVcaLevel: {
-      float bias = static_cast<float>(value) * 2.f - 1.f;
-      mVcaLevel = std::pow(10.f, bias * 6.f / 20.f);
+      // Master VCA (IC5, µPC1252H2) — final stage summing all 6 voices.
+      // Control range: +4V (max) to -6V (min), with -1V = unity gain.
+      // Gain law is linear with control current (transconductance), giving
+      // ~6.5 dB of total range: +2.65 dB at +4V, -3.87 dB at -6V.
+      // This is intentional — it's a level trim, not a wide-range volume control.
+      static constexpr float kGainMin = 0.6405f; // 10^(-3.87/20)
+      static constexpr float kGainMax = 1.3567f; // 10^(+2.65/20)
+      mVcaLevel = kGainMin + (kGainMax - kGainMin) * static_cast<float>(value);
       break;
     }
 

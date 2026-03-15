@@ -8,6 +8,7 @@
 #include "KR106ADSR.h"
 #include "KR106Oscillators.h"
 #include "KR106VCF.h"
+#include "KR106VcfFreqJ106.h"
 
 // Complete KR-106 voice: oscillators -> VCF -> ADSR -> VCA
 
@@ -67,6 +68,21 @@ public:
   float mPortaStep      = 0.f; // linear glide step (octaves per sample)
 
   float mSampleRate = 44100.f;
+
+  // --- J106 integer VCF state ---
+  int mMidiNote           = 60;    // MIDI note number (for firmware 8.8 pitch)
+  float mLfoEnvAmp        = 0.f;   // LFO onset envelope (set by DSP per block)
+  float mVcfTickAccum     = 0.f;   // tick accumulator (238.1 Hz, same as ADSR)
+  float mVcfTickStep      = 0.f;   // ticks per sample
+  uint16_t mVcfDacPrev    = 0;     // previous tick's DAC output
+  uint16_t mVcfDacNext    = 0;     // current tick's DAC output
+
+  // J106 integer parameter cache (set by SetParam, avoids per-sample conversion)
+  uint16_t mVcfCutoffInt  = 0;     // 14-bit slider value (0x0000–0x3F80)
+  uint8_t mVcfEnvModInt   = 0;     // env mod depth 0–254 (slider × 2)
+  uint8_t mVcfKeyTrackInt = 0;     // key track depth 0–254 (slider × 2)
+  uint8_t mVcfLfoDepthInt = 0;     // LFO→VCF depth 0–254 (slider × 2)
+  uint8_t mVcfBendSensInt = 0;     // bend→VCF sensitivity 0–255
 
   // Per-voice component tolerance offsets (fixed at construction).
   // Models resistor/capacitor/OTA matching tolerances in the hardware.
@@ -320,6 +336,9 @@ public:
     mInvNyq   = 1.f / nyq;      // Hz → normalized cutoff
     mMinCPS   = 20.f * mInvNyq; // 20 Hz floor in normalized units
 
+    // J106 integer VCF runs at firmware tick rate (238.1 Hz)
+    mVcfTickStep = ADSR::kTickRate / mSampleRate;
+
     UpdatePortaCoeff();
   }
 
@@ -341,6 +360,8 @@ public:
 
     // LFO buffer from global modulation (index 0)
     T* lfoBuffer = (nInputs > 0 && inputs[0]) ? inputs[0] : nullptr;
+    // Raw LFO triangle (before onset envelope) for J106 integer VCF path (index 1)
+    T* lfoRawBuffer = (nInputs > 1 && inputs[1]) ? inputs[1] : nullptr;
 
     for (int i = startIdx; i < startIdx + nFrames; i++)
     {
@@ -415,37 +436,85 @@ public:
         }
       }
 
-      // FIXME(kr106) Measure real Juno to see if LFO is symetric.
-
       // --- VCF frequency calculation ---
-      // All modulation sources sum in log-frequency space, modeling voltage
-      // summing into the IR3109's exponential converter.
-      //
-      // Scaling from Juno-6 published specs and circuit analysis:
-      //   ENV:  10 octaves at max slider (invert path 1.121× normal,
-      //         from IC8 gain asymmetry: R104/R99 vs R103/R98)
-      //   LFO:  depth in semitones (from dcoLfoDepth6/106)
-      //   KBD:  0–100% keyboard tracking (1.0 = 1V/oct)
-      //   Bend: 6 octaves range (tuned independently from LFO)
-      static constexpr float kEnvScale = 6.931f; // 10 * ln(2): 10 octaves
-      static constexpr float kEnvInvScale =
-          7.766f; // 10 * 1.121 * ln(2): inverted path gain asymmetry
-      static constexpr float kSemiToLogFreq = 0.05776f; // ln(2)/12: semitones to log-freq
+      float vcfCPS;
+      if (mADSR.mJ6Mode)
+      {
+        // J6: All modulation sources sum in log-frequency space, modeling
+        // voltage summing into the IR3109's exponential converter.
+        //
+        // Scaling from Juno-6 published specs and circuit analysis:
+        //   ENV:  10 octaves at max slider (invert path 1.121× normal,
+        //         from IC8 gain asymmetry: R104/R99 vs R103/R98)
+        //   LFO:  depth in semitones (from dcoLfoDepth6/106)
+        //   KBD:  0–100% keyboard tracking (1.0 = 1V/oct)
+        //   Bend: 6 octaves range (tuned independently from LFO)
+        static constexpr float kEnvScale = 6.931f; // 10 * ln(2): 10 octaves
+        static constexpr float kEnvInvScale =
+            7.766f; // 10 * 1.121 * ln(2): inverted path gain asymmetry
+        static constexpr float kSemiToLogFreq = 0.05776f; // ln(2)/12: semitones to log-freq
 
-      float envScale = (mVcfEnvInvert > 0) ? kEnvScale : kEnvInvScale;
+        float envScale = (mVcfEnvInvert > 0) ? kEnvScale : kEnvInvScale;
 
-      float vcfFrq = logf(mVcfFreq) + mVcfFreqOffset;
+        float vcfFrq = logf(mVcfFreq) + mVcfFreqOffset;
 
-      vcfFrq += logf(baseFreq / 32.703f) * mVcfKbd; // keyboard tracking: 1.0 = 100% = 1V/oct
-      vcfFrq += env * mVcfEnv * envScale * float(mVcfEnvInvert);
-      vcfFrq += lfo * mVcfLfo * kSemiToLogFreq;
-      vcfFrq += 4.15888f * mRawBend * mBendVcf; // bender (6 oct range, tuned separately)
+        vcfFrq += logf(baseFreq / 32.703f) * mVcfKbd; // keyboard tracking: 1.0 = 100% = 1V/oct
+        vcfFrq += env * mVcfEnv * envScale * float(mVcfEnvInvert);
+        vcfFrq += lfo * mVcfLfo * kSemiToLogFreq;
+        vcfFrq += 4.15888f * mRawBend * mBendVcf; // bender (6 oct range, tuned separately)
 
-      // Clamped to [20 Hz, 0.975 × Nyquist]: hardware range is 4 Hz–40 kHz,
-      // but at 44.1 kHz the upper bound is Nyquist-limited to ~21.5 kHz.
-      // At higher sample rates (96k+) the full 40 kHz range is available.
-      float vcfCPS = expf(vcfFrq) * mInvNyq;
-      vcfCPS       = std::clamp(vcfCPS, mMinCPS, 0.975f);
+        vcfCPS = expf(vcfFrq) * mInvNyq;
+      }
+      else
+      {
+        // J106: Firmware-accurate integer VCF calculation (D7811G $04D5–$064E).
+        // Runs at tick rate (238.1 Hz) with interpolation, matching the real
+        // hardware's DAC update rate.
+        mVcfTickAccum += mVcfTickStep;
+        while (mVcfTickAccum >= 1.f)
+        {
+          mVcfTickAccum -= 1.f;
+          mVcfDacPrev = mVcfDacNext;
+
+          // Convert LFO to firmware format: magnitude + polarity
+          float rawLfo = lfoRawBuffer ? static_cast<float>(lfoRawBuffer[i]) : 0.f;
+          uint16_t lfoVal = static_cast<uint16_t>(fabsf(rawLfo) * 0x1FFF);
+          bool lfoPolarity = (rawLfo < 0.f);
+          uint8_t depthScalar = static_cast<uint8_t>(mLfoEnvAmp * 255.f);
+          uint16_t vcfLfoSignal = kr106::calc_vcf_lfo_signal(
+              mVcfLfoDepthInt, depthScalar, lfoVal);
+
+          // Convert bend to firmware format: magnitude + polarity
+          uint8_t bendVal = static_cast<uint8_t>(fabsf(mRawBend) * 255.f);
+          bool bendPol = (mRawBend < 0.f);
+          uint16_t vcfBendAmt = kr106::calc_vcf_bend_amt(mVcfBendSensInt, bendVal);
+
+          // Envelope: use ADSR's 14-bit integer value directly
+          uint16_t envInt = mADSR.mEnvInt;
+
+          // Pitch: 8.8 fixed-point semitones (MIDI note + octave transpose)
+          int noteWithTranspose = mMidiNote + static_cast<int>(mOctTranspose);
+          uint16_t pitch88 = static_cast<uint16_t>(
+              std::clamp(noteWithTranspose, 0, 127) << 8);
+
+          bool envPol = (mVcfEnvInvert > 0);
+          mVcfDacNext = kr106::calc_vcf_freq(
+              mVcfCutoffInt, vcfLfoSignal, vcfBendAmt,
+              mVcfEnvModInt, mVcfKeyTrackInt,
+              lfoPolarity, bendPol, envPol,
+              envInt, pitch88);
+        }
+
+        // Interpolate between ticks, convert DAC → Hz → normalized cutoff
+        float dacF = static_cast<float>(mVcfDacPrev)
+                   + (static_cast<float>(mVcfDacNext) - static_cast<float>(mVcfDacPrev))
+                   * mVcfTickAccum;
+        float vcfHz = kr106::dacToHz(static_cast<uint16_t>(dacF));
+        vcfCPS = vcfHz * mInvNyq;
+      }
+
+      // Clamp to [20 Hz, 0.975 × Nyquist]
+      vcfCPS = std::clamp(vcfCPS, mMinCPS, 0.975f);
 
       float filtered = mVCF.Process(oscOut, vcfCPS, mVcfRes);
 

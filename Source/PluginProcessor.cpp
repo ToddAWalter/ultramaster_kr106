@@ -15,7 +15,7 @@ KR106AudioProcessor::KR106AudioProcessor()
     if (fmt) attrs = attrs.withStringFromValueFunction(std::move(fmt));
     auto* p = new juce::AudioParameterFloat(
       juce::ParameterID("p" + juce::String(idx), 1), name,
-      juce::NormalisableRange<float>(min, max, 0.01f), def, attrs);
+      juce::NormalisableRange<float>(min, max, 1.f / 512.f), def, attrs);
     addParameter(p);
     mParams[idx] = p;
   };
@@ -44,9 +44,13 @@ KR106AudioProcessor::KR106AudioProcessor()
   SFV fmtPct = [](float v, int) {
     return juce::String(juce::roundToInt(v * 100.f)) + "%";
   };
-  SFV fmtVcfHz = [](float v, int) {
-    double hz = 20.0 * std::pow(900.0, (double)v);
-    if (hz >= 1000.0) return juce::String(hz / 1000.0, 1) + " kHz";
+  SFV fmtVcfHz = [this](float v, int) {
+    float hz;
+    if (mDSP.mAdsrMode == 0)
+      hz = kr106::j6_vcf_freq_from_slider(v);
+    else
+      hz = kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80));
+    if (hz >= 1000.f) return juce::String(hz / 1000.f, 1) + " kHz";
     return juce::String(juce::roundToInt(hz)) + " Hz";
   };
   SFV fmtLfoRate = [this](float v, int) {
