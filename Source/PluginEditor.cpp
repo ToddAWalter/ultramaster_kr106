@@ -11,7 +11,10 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     auto& displays = juce::Desktop::getInstance().getDisplays();
     auto* display = displays.getPrimaryDisplay();
     if (display && display->scale < 1.5)
+    {
+        mUIScale = 2.f;
         setTransform(juce::AffineTransform::scale(2.0f));
+    }
 
     // Load @2x images from binary data
     auto loadImg = [](const void* data, int size) {
@@ -143,6 +146,28 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
 KR106Editor::~KR106Editor()
 {
     stopTimer();
+}
+
+void KR106Editor::mouseDown(const juce::MouseEvent& e)
+{
+    if (!e.mods.isPopupMenu()) return;
+
+    juce::PopupMenu menu;
+    menu.addItem(1, "100%", true, mUIScale == 1.f);
+    menu.addItem(2, "150%", true, mUIScale == 1.5f);
+    menu.addItem(3, "200%", true, mUIScale == 2.f);
+
+    menu.showMenuAsync({}, [this](int r) {
+        float s = r == 1 ? 1.f : r == 2 ? 1.5f : r == 3 ? 2.f : 0.f;
+        if (s > 0.f && s != mUIScale)
+        {
+            mUIScale = s;
+            if (s == 1.f)
+                setTransform({});
+            else
+                setTransform(juce::AffineTransform::scale(s));
+        }
+    });
 }
 
 void KR106Editor::paint(juce::Graphics& g)

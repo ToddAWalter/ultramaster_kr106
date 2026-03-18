@@ -18,6 +18,7 @@ public:
     KR106Editor(KR106AudioProcessor&);
     ~KR106Editor() override;
     void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
 
 private:
     void timerCallback() override;
@@ -30,6 +31,7 @@ private:
     KR106Keyboard* mKeyboard = nullptr;
     KR106Tooltip mTooltip;
 
+    float mUIScale = 1.f;
     bool mNeedChevronRestore = true;
     bool mWasActive = true;
     int mRepaintDivider = 0;
