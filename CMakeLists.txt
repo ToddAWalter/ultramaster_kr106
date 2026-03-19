@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(KR106 VERSION 2.1.6)
+project(KR106 VERSION 2.1.7)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 
@@ -39,7 +39,7 @@ juce_add_binary_data(KR106BinaryData SOURCES
     resources/img/transpose_chevron@2x.png
     resources/img/new_knob@2x.png
     resources/img/slider_handle@2x.png
-    resources/hdad-segment14-1.002/Segment14.otf
+    resources/fonts/Segment14.otf
 )
 
 target_sources(KR106 PRIVATE

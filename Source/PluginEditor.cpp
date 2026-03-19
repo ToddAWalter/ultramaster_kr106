@@ -181,11 +181,16 @@ void KR106Editor::mouseDown(const juce::MouseEvent& e)
 
 bool KR106Editor::keyPressed(const juce::KeyPress& key)
 {
-    if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey)
+    int delta = 0;
+    if (key == juce::KeyPress::upKey)        delta = -1;
+    else if (key == juce::KeyPress::downKey) delta =  1;
+    else if (key == juce::KeyPress::pageUpKey)   delta = -8;
+    else if (key == juce::KeyPress::pageDownKey) delta =  8;
+
+    if (delta != 0)
     {
         int num = mProcessor.getNumPrograms();
         if (num <= 0) return true;
-        int delta = key == juce::KeyPress::upKey ? 1 : -1;
         int idx = mProcessor.getCurrentProgram() + delta;
         idx = ((idx % num) + num) % num;
         mProcessor.setCurrentProgram(idx);
