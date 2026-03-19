@@ -39,6 +39,7 @@ juce_add_binary_data(KR106BinaryData SOURCES
     resources/img/transpose_chevron@2x.png
     resources/img/new_knob@2x.png
     resources/img/slider_handle@2x.png
+    resources/hdad-segment14-1.002/Segment14.otf
 )
 
 target_sources(KR106 PRIVATE

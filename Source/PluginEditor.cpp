@@ -132,10 +132,16 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     add(new KR106ButtonLED(param(kChorusII), 2, ledRed, param(kPower)), 767, 43, 17, 28);
 
     // === SCOPE ===
-    mScope = add(new KR106Scope(&p), 790, 21, 128, 74);
+    mScope = add(new KR106Scope(&p), 790, 7, 128, 74);
+
+    // === PRESET DISPLAY ===
+    add(new KR106PresetDisplay(&p), 790, 86, 128, 14);
 
     // === KEYBOARD ===
     mKeyboard = add(new KR106Keyboard(&p, chevron), 129, 106, 792, 114);
+
+    // Accept keyboard focus so UP/DN arrow keys cycle presets
+    setWantsKeyboardFocus(true);
 
     // Tooltip overlay — added last so it paints on top of all controls
     addAndMakeVisible(mTooltip);
@@ -171,6 +177,22 @@ void KR106Editor::mouseDown(const juce::MouseEvent& e)
                 setTransform(juce::AffineTransform::scale(s));
         }
     });
+}
+
+bool KR106Editor::keyPressed(const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey)
+    {
+        int num = mProcessor.getNumPrograms();
+        if (num <= 0) return true;
+        int delta = key == juce::KeyPress::upKey ? 1 : -1;
+        int idx = mProcessor.getCurrentProgram() + delta;
+        idx = ((idx % num) + num) % num;
+        mProcessor.setCurrentProgram(idx);
+        repaint();
+        return true;
+    }
+    return false;
 }
 
 void KR106Editor::paint(juce::Graphics& g)

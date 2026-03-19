@@ -353,7 +353,8 @@ public:
 
   void Trigger(double level, bool isRetrigger)
   {
-    mVelocity = static_cast<float>(level);
+    // Square-root curve: perceptually even dynamics (linear feels too quiet)
+    mVelocity = sqrtf(static_cast<float>(level));
 
     // Snap glide pitch if portamento is off, or voice has never been triggered
     float newPitch = static_cast<float>(mPitch);

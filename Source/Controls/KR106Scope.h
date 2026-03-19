@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 // ============================================================================
 // KR106Scope -- oscilloscope display (green waveform on black)
@@ -51,6 +52,7 @@ public:
 
     void mouseDown(const juce::MouseEvent&) override
     {
+        mAboutActive = false; // reset beam animation on any click
         mScaleIdx = (mScaleIdx + 1) % 4; // 0: waveform, 1: ADSR, 2: VCF, 3: about
         repaint();
     }
@@ -68,7 +70,7 @@ public:
                          % KR106AudioProcessor::kScopeRingSize;
         if (newSamples == 0)
         {
-            if (mScaleIdx == 3) repaint(); // animate about screen wiggle
+            if (mScaleIdx == 3) repaint(); // animate about screen beam
             else if (mScaleIdx >= 1) repaintIfParamsChanged();
             return;
         }
@@ -516,15 +518,41 @@ private:
         }
     }
 
-    // ---- About / version display (vector stroke text) ----
-    void paintAbout(juce::Graphics& g, int w, int h,
-                    juce::Colour dim, juce::Colour mid, juce::Colour bright)
+    // ---- Build rasterized path for about screen (done once per resize) ----
+    void buildAboutPath(int w, int h)
     {
-        // Vector stroke font — straight lines only, 4×6 grid per glyph.
-        // {-1,-1} marks pen-up between strokes within one glyph.
+        if (w == mAboutW && h == mAboutH && !mAboutPath.empty()) return;
+        mAboutW = w;
+        mAboutH = h;
+        mAboutPath.clear();
+
+        std::vector<bool> visited(w * h, false);
+
+        auto addPixel = [&](int px, int py) {
+            if (px >= 0 && px < w && py >= 0 && py < h && !visited[py * w + px]) {
+                visited[py * w + px] = true;
+                mAboutPath.push_back({static_cast<int16_t>(px), static_cast<int16_t>(py)});
+            }
+        };
+
+        auto rasterLine = [&](float x0f, float y0f, float x1f, float y1f) {
+            int x0 = static_cast<int>(std::round(x0f)), y0 = static_cast<int>(std::round(y0f));
+            int x1 = static_cast<int>(std::round(x1f)), y1 = static_cast<int>(std::round(y1f));
+            int dx = std::abs(x1 - x0), dy = std::abs(y1 - y0);
+            int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+            int err = dx - dy;
+            while (true) {
+                addPixel(x0, y0);
+                if (x0 == x1 && y0 == y1) break;
+                int e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x0 += sx; }
+                if (e2 < dx) { err += dx; y0 += sy; }
+            }
+        };
+
+        // Vector stroke font — 4×6 grid per glyph, {-1,-1} = pen-up
         struct P { int8_t x, y; };
         static constexpr P PU {-1, -1};
-
         static constexpr P cA[] = {{0,6},{0,0},{4,0},{4,6},PU,{0,3},{4,3}};
         static constexpr P cE[] = {{4,0},{0,0},{0,6},{4,6},PU,{0,3},{3,3}};
         static constexpr P cK[] = {{0,0},{0,6},PU,{4,0},{0,3},{4,6}};
@@ -549,7 +577,7 @@ private:
         static constexpr P cDot[]  = {{2,5},{2,6}};
 
         struct Glyph { char ch; const P* pts; int n; };
-        static const Glyph glyphs[] = {
+        const Glyph glyphs[] = {
             {'A',cA,7}, {'E',cE,7}, {'K',cK,6}, {'L',cL,3}, {'M',cM,5},
             {'R',cR,8}, {'S',cS,6}, {'T',cT,5}, {'U',cU,4}, {'V',cV,3},
             {'0',c0,5}, {'1',c1,3}, {'2',c2,6}, {'3',c3,8}, {'4',c4,6},
@@ -557,35 +585,41 @@ private:
             {'-',cDash,2}, {'.',cDot,2},
         };
 
-        // Draw a centered string of vector glyphs with per-character drift
-        float t = juce::Time::getMillisecondCounter() * 0.001f;
-        auto drawStr = [&](const char* str, float cx, float cy, float glyphH)
-        {
+        auto traceStr = [&](const char* str, float cx, float cy, float glyphH) {
             float glyphW = glyphH * (4.f / 6.f);
             float space  = glyphW * 1.5f;
             int len = static_cast<int>(strlen(str));
             float x0 = cx - (len * space - (space - glyphW)) * 0.5f;
-
-            for (int i = 0; i < len; i++)
-            {
+            for (int i = 0; i < len; i++) {
                 if (str[i] == ' ') continue;
                 const Glyph* gl = nullptr;
                 for (auto& gg : glyphs)
                     if (gg.ch == str[i]) { gl = &gg; break; }
                 if (!gl) continue;
-
                 float ox = x0 + i * space;
                 float oy = cy;
                 float sx = glyphW / 4.f, sy = glyphH / 6.f;
-                for (int j = 1; j < gl->n; j++)
-                {
+                for (int j = 1; j < gl->n; j++) {
                     if (gl->pts[j].x < 0 || gl->pts[j-1].x < 0) continue;
-                    g.drawLine(ox + gl->pts[j-1].x * sx, oy + gl->pts[j-1].y * sy,
-                               ox + gl->pts[j].x   * sx, oy + gl->pts[j].y   * sy,
-                               1.f);
+                    rasterLine(ox + gl->pts[j-1].x * sx, oy + gl->pts[j-1].y * sy,
+                              ox + gl->pts[j].x * sx,   oy + gl->pts[j].y * sy);
                 }
             }
         };
+
+        float cx = w * 0.5f;
+        float titleH = h * 0.15f;
+        traceStr("ULTRAMASTER", cx, h * 0.15f, titleH);
+        traceStr("KR-106", cx, h * 0.40f, titleH);
+        juce::String ver = juce::String("V") + JucePlugin_VersionString;
+        traceStr(ver.toRawUTF8(), cx, h * 0.70f, h * 0.10f);
+    }
+
+    // ---- About / version display (oscilloscope beam trace with phosphor decay) ----
+    void paintAbout(juce::Graphics& g, int w, int h,
+                    juce::Colour dim, juce::Colour /*mid*/, juce::Colour /*bright*/)
+    {
+        buildAboutPath(w, h);
 
         // Faint grid
         g.setColour(dim.withAlpha(0.3f));
@@ -596,21 +630,48 @@ private:
             g.fillRect(x, 0.f, 1.f, static_cast<float>(h));
         }
 
-        // Slow global drift
-        float gx = sinf(t * 0.7f) * 0.5f;
-        float gy = sinf(t * 0.5f) * 0.3f;
-        float cx = w * 0.5f + gx;
+        int totalPx = static_cast<int>(mAboutPath.size());
+        if (totalPx == 0) return;
 
-        // Title
-        float titleH = h * 0.15f;
-        g.setColour(bright);
-        drawStr("ULTRAMASTER", cx, h * 0.15f + gy, titleH);
-        drawStr("KR-106", cx, h * 0.40f + gy, titleH);
+        // Start timer on first paint after entering about mode
+        float now = juce::Time::getMillisecondCounter() * 0.001f;
+        if (!mAboutActive) { mAboutStartTime = now; mAboutActive = true; }
+        float t = now - mAboutStartTime;
 
-        // Version
-        g.setColour(mid);
-        juce::String ver = juce::String("V") + JucePlugin_VersionString;
-        drawStr(ver.toRawUTF8(), cx, h * 0.70f + gy, h * 0.10f);
+        // Continuous loop: beam wraps, no clearing. All pixels always drawn.
+        // Brightness based on distance behind the beam (wrapping around).
+        static constexpr float kDrawSec = 3.0f;
+        float phase = std::fmod(t, kDrawSec);
+        int beamIdx = static_cast<int>(phase / kDrawSec * totalPx);
+
+        for (int i = 0; i < totalPx; i++)
+        {
+            // Wrapped distance behind the beam head
+            int dist = (beamIdx - i + totalPx) % totalPx;
+
+            // Fade from 1.0 at beam to 0.1 at max distance (opposite side)
+            float glow = 1.0f - 0.9f * static_cast<float>(dist) / static_cast<float>(totalPx);
+
+            g.setColour(juce::Colour(static_cast<uint8_t>(0),
+                                     static_cast<uint8_t>(glow * 255),
+                                     static_cast<uint8_t>(0)));
+            g.fillRect(static_cast<float>(mAboutPath[i].x),
+                       static_cast<float>(mAboutPath[i].y), 1.f, 1.f);
+        }
+
+        // Beam dot: pure white center, grey bloom
+        {
+            int bx = mAboutPath[beamIdx % totalPx].x;
+            int by = mAboutPath[beamIdx % totalPx].y;
+            g.setColour(juce::Colour(static_cast<uint8_t>(128),
+                                     static_cast<uint8_t>(128),
+                                     static_cast<uint8_t>(128)));
+            g.fillRect(static_cast<float>(bx - 1), static_cast<float>(by - 1), 3.f, 3.f);
+            g.setColour(juce::Colour(static_cast<uint8_t>(255),
+                                     static_cast<uint8_t>(255),
+                                     static_cast<uint8_t>(255)));
+            g.fillRect(static_cast<float>(bx), static_cast<float>(by), 1.f, 1.f);
+        }
     }
 
     int mScaleIdx = 0; // 0: waveform, 1: ADSR, 2: VCF, 3: about
@@ -630,6 +691,13 @@ private:
     float mDisplayR[RING_SIZE] = {};
     int mDisplayLen = 0;
     bool mHasData = false;
+
+    // About screen beam trace state
+    struct AboutPixel { int16_t x, y; };
+    std::vector<AboutPixel> mAboutPath;
+    int mAboutW = 0, mAboutH = 0;
+    float mAboutStartTime = 0.f;
+    bool mAboutActive = false;
 
     // Cached param snapshot for ADSR/VCF modes — only repaint when values change
     uint64_t mParamHash = 0;

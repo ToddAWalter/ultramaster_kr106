@@ -10,6 +10,7 @@
 #include "Controls/KR106Scope.h"
 #include "Controls/KR106Keyboard.h"
 #include "Controls/KR106Tooltip.h"
+#include "Controls/KR106PresetDisplay.h"
 
 class KR106Editor : public juce::AudioProcessorEditor,
                     private juce::Timer
@@ -19,6 +20,7 @@ public:
     ~KR106Editor() override;
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
+    bool keyPressed(const juce::KeyPress&) override;
 
 private:
     void timerCallback() override;
