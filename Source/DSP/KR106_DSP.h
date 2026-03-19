@@ -143,7 +143,7 @@ public:
   void TriggerUnisonVoices(int note, int velocity)
   {
     double pitch = MidiToPitch(note);
-    float vel = velocity / 127.f;
+    float vel = mIgnoreVelocity ? 1.f : velocity / 127.f;
     bool anyBusy = false;
     for (int i = 0; i < mActiveVoices; i++) anyBusy |= mVoices[i]->GetBusy();
     for (int i = 0; i < mActiveVoices; i++)
@@ -211,7 +211,7 @@ public:
     auto& v = *mVoices[voiceIdx];
     v.mMidiNote = note;
     v.SetUnisonPitch(MidiToPitch(note));
-    v.Trigger(velocity / 127.f, v.GetBusy());
+    v.Trigger(mIgnoreVelocity ? 1.f : velocity / 127.f, v.GetBusy());
     mVoiceNote[voiceIdx] = note;
     mVoiceAge[voiceIdx] = ++mVoiceAgeCounter;
   }
@@ -416,6 +416,7 @@ public:
   int mUnisonNote = -1;
   std::vector<int> mUnisonStack;
   int mActiveVoices = 6;
+  bool mIgnoreVelocity = true;
   int mVoiceNote[kMaxVoices] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
   int64_t mVoiceAge[kMaxVoices] = {};
   int64_t mVoiceAgeCounter = 0;
