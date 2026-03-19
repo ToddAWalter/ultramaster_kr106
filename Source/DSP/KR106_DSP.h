@@ -258,7 +258,7 @@ public:
       {
         int nv = static_cast<int>(NVoices());
         for (int i = 0; i < nv; i++)
-          if (mVoiceNote[i] == note) { mVoices[i]->Release(); mVoiceNote[i] = -1; break; }
+          if (mVoiceNote[i] == note) { mVoices[i]->Release(); mVoiceNote[i] = -1; }
       }
     }
     else
@@ -273,7 +273,7 @@ public:
       {
         int nv = static_cast<int>(NVoices());
         for (int i = 0; i < nv; i++)
-          if (mVoiceNote[i] == note) { mVoices[i]->Release(); mVoiceNote[i] = -1; break; }
+          if (mVoiceNote[i] == note) { mVoices[i]->Release(); mVoiceNote[i] = -1; }
       }
     }
   }
@@ -353,6 +353,11 @@ public:
     ForEachVoice([sampleRate, blockSize](kr106::Voice<T>& v) {
       v.SetSampleRateAndBlockSize(sampleRate, blockSize);
     });
+    // Clear voice allocation so prepareToPlay re-trigger starts clean
+    std::fill(std::begin(mVoiceNote), std::end(mVoiceNote), -1);
+    mUnisonNote = -1;
+    mUnisonStack.clear();
+    mRoundRobinNext = 0;
     mHPF.SetSampleRate(mSampleRate);
     mHPF.Init();
     mHPF.SetMode(1);

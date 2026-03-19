@@ -29,8 +29,14 @@ public:
         if (!mProcessor) return;
 
         // Get current preset name
-        int idx = mProcessor->getCurrentProgram();
-        juce::String name = mProcessor->getProgramName(idx).substring(0, 18);
+        juce::String name;
+        if (mProcessor->mInitialDefault)
+            name = "Default";
+        else
+        {
+            int idx = mProcessor->getCurrentProgram();
+            name = mProcessor->getProgramName(idx).substring(0, 18);
+        }
 
         // Draw preset name left-aligned in green (Segment14 font)
         // Use drawSingleLineText at a fixed baseline to bypass JUCE font metrics

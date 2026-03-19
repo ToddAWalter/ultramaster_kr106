@@ -2,6 +2,18 @@
 #include "PluginEditor.h"
 #include "KR106_Presets_JUCE.h"
 
+// Debug logging to ~/Library/Application Support/KR106/debug.log
+#define KR106_DEBUG 0
+#if KR106_DEBUG
+static void dbgLog(const juce::String& msg)
+{
+  auto f = KR106PresetManager::getAppDataDir().getChildFile("debug.log");
+  f.appendText(juce::Time::getCurrentTime().toString(true, true, true, true) + "  " + msg + "\n");
+}
+#else
+static void dbgLog(const juce::String&) {}
+#endif
+
 static bool isLivePerformanceParam(int idx)
 {
   return idx == kTuning || idx == kTranspose || idx == kHold ||
@@ -412,7 +424,30 @@ KR106AudioProcessor::KR106AudioProcessor()
 
 void KR106AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+  dbgLog("prepareToPlay: sr=" + juce::String(sampleRate) + " bs=" + juce::String(samplesPerBlock));
+
+  // Log held notes before Reset
+  juce::String heldBefore;
+  for (int i = 0; i < 128; i++)
+    if (mDSP.mHeldNotes.test(i)) heldBefore += juce::String(i) + " ";
+  dbgLog("  heldNotes before Reset: [" + heldBefore.trim() + "]");
+  dbgLog("  mHold=" + juce::String(mDSP.mHold ? 1 : 0)
+       + " portaMode=" + juce::String(mDSP.mPortaMode)
+       + " arpEnabled=" + juce::String(mDSP.mArp.mEnabled ? 1 : 0));
+
+  // Log voice allocation before Reset
+  juce::String voicesBefore;
+  for (int i = 0; i < mDSP.mActiveVoices; i++)
+    voicesBefore += juce::String(mDSP.mVoiceNote[i]) + " ";
+  dbgLog("  voiceNote before Reset: [" + voicesBefore.trim() + "]");
+
   mDSP.Reset(sampleRate, samplesPerBlock);
+
+  // Log voice allocation after Reset
+  juce::String voicesAfter;
+  for (int i = 0; i < mDSP.mActiveVoices; i++)
+    voicesAfter += juce::String(mDSP.mVoiceNote[i]) + " ";
+  dbgLog("  voiceNote after Reset: [" + voicesAfter.trim() + "]");
 
   // Push all current param values to DSP
   for (int i = 0; i < kNumParams; i++)
@@ -422,20 +457,40 @@ void KR106AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     parameterChanged(i, val);
   }
 
+  dbgLog("  mHold after param push=" + juce::String(mDSP.mHold ? 1 : 0));
+
   // Re-trigger held notes after voice clear
   if (mDSP.mHold)
   {
+    juce::String retriggered;
     if (mDSP.mArp.mEnabled)
     {
       if (!mDSP.mArp.mHeldNotes.empty())
         mDSP.mArp.mPhase = 1.f;
+      dbgLog("  arp re-trigger, arpHeldNotes=" + juce::String((int)mDSP.mArp.mHeldNotes.size()));
     }
     else
     {
       for (int i = 0; i < 128; i++)
+      {
         if (mDSP.mHeldNotes.test(i))
+        {
+          retriggered += juce::String(i) + " ";
           mDSP.SendToSynth(i, true, 127);
+        }
+      }
+      dbgLog("  re-triggered held notes: [" + retriggered.trim() + "]");
     }
+
+    // Log voice allocation after re-trigger
+    juce::String voicesRetrig;
+    for (int i = 0; i < mDSP.mActiveVoices; i++)
+      voicesRetrig += juce::String(mDSP.mVoiceNote[i]) + " ";
+    dbgLog("  voiceNote after re-trigger: [" + voicesRetrig.trim() + "]");
+  }
+  else
+  {
+    dbgLog("  mHold=0, no re-trigger");
   }
 }
 
@@ -544,34 +599,7 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                             std::memory_order_release);
   }
 
-  // --- Drain UI MIDI queue (keyboard, LFO trigger) → DSP + MIDI output ---
-  while (true)
-  {
-    int tail = mUIMidiTail.load(std::memory_order_relaxed);
-    if (tail == mUIMidiHead.load(std::memory_order_acquire))
-      break;
-    auto& evt = mUIMidiQueue[tail];
-    if ((evt.status & 0xF0) == 0x90 && evt.data2 > 0)
-    {
-      mDSP.NoteOn(evt.data1, evt.data2);
-      mKeyboardHeld.set(evt.data1);
-    }
-    else if ((evt.status & 0xF0) == 0x80 || ((evt.status & 0xF0) == 0x90 && evt.data2 == 0))
-    {
-      mDSP.NoteOff(evt.data1);
-      if (!mDSP.mHold)
-        mKeyboardHeld.reset(evt.data1);
-    }
-    else if ((evt.status & 0xF0) == 0xB0)
-    {
-      mDSP.ControlChange(evt.data1, evt.data2 / 127.f);
-    }
-    // Echo to MIDI output
-    midiMessages.addEvent(juce::MidiMessage(evt.status, evt.data1, evt.data2), 0);
-    mUIMidiTail.store((tail + 1) % kUIMidiQueueSize, std::memory_order_release);
-  }
-
-  // --- Decode host MIDI ---
+  // --- Decode host MIDI (before UI queue so echoed UI events aren't double-processed) ---
   for (const auto meta : midiMessages)
   {
     auto msg = meta.getMessage();
@@ -653,6 +681,34 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
       }
     }
+  }
+
+  // --- Drain UI MIDI queue (keyboard, LFO trigger) → DSP + MIDI output ---
+  // Done after host MIDI loop so echoed events aren't double-processed
+  while (true)
+  {
+    int tail = mUIMidiTail.load(std::memory_order_relaxed);
+    if (tail == mUIMidiHead.load(std::memory_order_acquire))
+      break;
+    auto& evt = mUIMidiQueue[tail];
+    if ((evt.status & 0xF0) == 0x90 && evt.data2 > 0)
+    {
+      mDSP.NoteOn(evt.data1, evt.data2);
+      mKeyboardHeld.set(evt.data1);
+    }
+    else if ((evt.status & 0xF0) == 0x80 || ((evt.status & 0xF0) == 0x90 && evt.data2 == 0))
+    {
+      mDSP.NoteOff(evt.data1);
+      if (!mDSP.mHold)
+        mKeyboardHeld.reset(evt.data1);
+    }
+    else if ((evt.status & 0xF0) == 0xB0)
+    {
+      mDSP.ControlChange(evt.data1, evt.data2 / 127.f);
+    }
+    // Echo to MIDI output
+    midiMessages.addEvent(juce::MidiMessage(evt.status, evt.data1, evt.data2), 0);
+    mUIMidiTail.store((tail + 1) % kUIMidiQueueSize, std::memory_order_release);
   }
 
   // --- Process DSP ---
@@ -775,9 +831,35 @@ void KR106AudioProcessor::parameterChanged(int paramIdx, float newValue)
   }
   else
   {
+    if (paramIdx == kHold)
+    {
+      juce::String heldNotes;
+      for (int i = 0; i < 128; i++)
+        if (mDSP.mHeldNotes.test(i)) heldNotes += juce::String(i) + " ";
+      juce::String voiceNotes;
+      for (int i = 0; i < mDSP.mActiveVoices; i++)
+        voiceNotes += juce::String(mDSP.mVoiceNote[i]) + " ";
+      dbgLog("parameterChanged kHold=" + juce::String(newValue)
+           + " mHold=" + juce::String(mDSP.mHold ? 1 : 0)
+           + " heldNotes=[" + heldNotes.trim() + "]"
+           + " voiceNote=[" + voiceNotes.trim() + "]"
+           + " portaMode=" + juce::String(mDSP.mPortaMode));
+    }
     mDSP.SetParam(paramIdx, static_cast<double>(newValue));
-    if (paramIdx == kHold && newValue < 0.5f)
-      mHoldOff = true;
+    if (paramIdx == kHold)
+    {
+      juce::String heldAfter;
+      for (int i = 0; i < 128; i++)
+        if (mDSP.mHeldNotes.test(i)) heldAfter += juce::String(i) + " ";
+      juce::String voicesAfter;
+      for (int i = 0; i < mDSP.mActiveVoices; i++)
+        voicesAfter += juce::String(mDSP.mVoiceNote[i]) + " ";
+      dbgLog("  after SetParam: mHold=" + juce::String(mDSP.mHold ? 1 : 0)
+           + " heldNotes=[" + heldAfter.trim() + "]"
+           + " voiceNote=[" + voicesAfter.trim() + "]");
+      if (newValue < 0.5f)
+        mHoldOff = true;
+    }
   }
 }
 
@@ -820,6 +902,7 @@ void KR106AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 
 void KR106AudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
+  mInitialDefault = false;
   juce::MemoryInputStream stream(data, static_cast<size_t>(sizeInBytes), false);
   int numParams = stream.readInt();
   if (numParams > kNumParams) numParams = kNumParams;
@@ -882,6 +965,7 @@ void KR106AudioProcessor::setCurrentProgram(int index)
   }
 
   mCurrentPreset = index;
+  mInitialDefault = false;
 
   for (int i = 0; i < kNumParams; i++)
   {

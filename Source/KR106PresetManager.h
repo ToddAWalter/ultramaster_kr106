@@ -68,8 +68,8 @@ public:
     static juce::var getSetting(const juce::String& key, const juce::var& defaultValue = {})
     {
         auto settings = loadSettings();
-        if (settings.isObject() && settings.hasProperty(key))
-            return settings[key];
+        if (settings.isObject() && settings.getDynamicObject()->hasProperty(key))
+            return settings.getDynamicObject()->getProperty(key);
         return defaultValue;
     }
 
