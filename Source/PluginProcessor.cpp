@@ -3,7 +3,7 @@
 #include "KR106_Presets_JUCE.h"
 
 // Debug logging to ~/Library/Application Support/KR106/debug.log
-#define KR106_DEBUG 0
+#define KR106_DEBUG 1
 #if KR106_DEBUG
 static void dbgLog(const juce::String& msg)
 {
@@ -248,32 +248,50 @@ KR106AudioProcessor::KR106AudioProcessor()
     return (lo + hi) * 0.5f;
   };
   using ADSR = kr106::ADSR;
-  auto fmtAtkMs = [this](float v, int) -> juce::String {
+
+  // J6 attack ms: same tau table as DSP, completion = tau * ln(6)
+  auto j6AtkMs = [](float v) -> float {
+    static constexpr float kAttackTau[11] = {
+      0.000558f, 0.001674f, 0.008762f, 0.029468f, 0.064015f, 0.120998f,
+      0.238481f, 0.495993f, 0.607950f, 1.392486f, 1.674332f
+    };
+    float s = v * 10.f;
+    int idx = std::min(static_cast<int>(s), 9);
+    float frac = s - idx;
+    float tau = std::exp(std::log(kAttackTau[idx]) + frac * (std::log(kAttackTau[idx + 1]) - std::log(kAttackTau[idx])));
+    return tau * 1.7918f * 1000.f;  // tau * ln(6) * 1000
+  };
+
+  // J6 decay/release ms: same tau formula as DSP, time to -20dB = tau * ln(11)
+  auto j6DRMs = [](float v) -> float {
+    float tau = 0.003577f * std::exp(12.9460f * v + -5.0638f * v * v);
+    return tau * 2.3979f * 1000.f;  // tau * ln(11) * 1000
+  };
+
+  auto fmtAtkMs = [this, j6AtkMs](float v, int) -> juce::String {
     bool j6 = mParams[kAdsrMode] && mParams[kAdsrMode]->getValue() < 0.5f;
-    float ms = j6 ? 0.001500f * std::exp(11.7382f * v + -4.7207f * v * v) * 1791.8f : ADSR::AttackMs(v);
+    float ms = j6 ? j6AtkMs(v) : ADSR::AttackMs(v);
     if (ms >= 1000.f) return juce::String(ms / 1000.f, 2) + " s";
     return juce::String(juce::roundToInt(ms)) + " ms";
   };
-  VFS parseAtkMs = [this, bsearch, parseMs](const juce::String& text) -> float {
+  VFS parseAtkMs = [this, bsearch, parseMs, j6AtkMs](const juce::String& text) -> float {
     float ms = parseMs(text);
-    return bsearch([this](float v) {
+    return bsearch([this, j6AtkMs](float v) {
       bool j6 = mParams[kAdsrMode] && mParams[kAdsrMode]->getValue() < 0.5f;
-      return j6 ? 0.001500f * std::exp(11.7382f * v + -4.7207f * v * v) * 1791.8f
-                : ADSR::AttackMs(v);
+      return j6 ? j6AtkMs(v) : ADSR::AttackMs(v);
     }, ms);
   };
-  auto fmtDRMs = [this](float v, int) -> juce::String {
+  auto fmtDRMs = [this, j6DRMs](float v, int) -> juce::String {
     bool j6 = mParams[kAdsrMode] && mParams[kAdsrMode]->getValue() < 0.5f;
-    float ms = j6 ? 0.003577f * std::exp(12.9460f * v + -5.0638f * v * v) * 9966.f : ADSR::DecRelMs(v);
+    float ms = j6 ? j6DRMs(v) : ADSR::DecRelMs(v);
     if (ms >= 1000.f) return juce::String(ms / 1000.f, 2) + " s";
     return juce::String(juce::roundToInt(ms)) + " ms";
   };
-  VFS parseDRMs = [this, bsearch, parseMs](const juce::String& text) -> float {
+  VFS parseDRMs = [this, bsearch, parseMs, j6DRMs](const juce::String& text) -> float {
     float ms = parseMs(text);
-    return bsearch([this](float v) {
+    return bsearch([this, j6DRMs](float v) {
       bool j6 = mParams[kAdsrMode] && mParams[kAdsrMode]->getValue() < 0.5f;
-      return j6 ? 0.003577f * std::exp(12.9460f * v + -5.0638f * v * v) * 9966.f
-                : ADSR::DecRelMs(v);
+      return j6 ? j6DRMs(v) : ADSR::DecRelMs(v);
     }, ms);
   };
 
@@ -506,6 +524,9 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
   for (int c = nOutputs; c < getTotalNumOutputChannels(); c++)
     buffer.clear(c, 0, nFrames);
 
+  // Record how many MIDI events came from the host, before we add our own
+  int hostMidiEventCount = midiMessages.getNumEvents();
+
   // --- Sync parameter changes from JUCE → DSP + emit MIDI CC ---
   // Skip CC emission during preset change (SysEx covers it)
   bool presetChange = mSendPresetSysEx.load(std::memory_order_relaxed);
@@ -552,10 +573,10 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             else sw1 |= 0x01;
             if (getParamValue(kDcoPulse) > 0.5f) sw1 |= 0x08;
             if (getParamValue(kDcoSaw) > 0.5f)   sw1 |= 0x10;
-            bool chorusOff = getParamValue(kChorusOff) > 0.5f;
             bool chorusI   = getParamValue(kChorusI)   > 0.5f;
-            if (chorusOff) sw1 |= 0x20;
-            if (!chorusOff && chorusI) sw1 |= 0x40;
+            bool chorusII  = getParamValue(kChorusII)  > 0.5f;
+            if (!chorusI && !chorusII) sw1 |= 0x20; // bit5: chorus off
+            if (chorusI) sw1 |= 0x40;               // bit6: level 1
             uint8_t sysex[] = { 0xF0, 0x41, 0x32, 0x00, 0x10, sw1, 0xF7 };
             midiMessages.addEvent(sysex, 7, 0);
             break;
@@ -600,8 +621,11 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
   }
 
   // --- Decode host MIDI (before UI queue so echoed UI events aren't double-processed) ---
+  // Only process events from the host, skip our own SysEx/CC output added above.
+  int eventIdx = 0;
   for (const auto meta : midiMessages)
   {
+    if (eventIdx++ >= hostMidiEventCount) break; // skip events we added
     auto msg = meta.getMessage();
 
     if (msg.isNoteOn())
@@ -693,11 +717,16 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     auto& evt = mUIMidiQueue[tail];
     if ((evt.status & 0xF0) == 0x90 && evt.data2 > 0)
     {
+      dbgLog("UI NoteOn " + juce::String(evt.data1) + " hold=" + juce::String(mDSP.mHold ? 1 : 0)
+           + " arp=" + juce::String(mDSP.mArp.mEnabled ? 1 : 0) + " arpNotes=" + juce::String((int)mDSP.mArp.mHeldNotes.size()));
       mDSP.NoteOn(evt.data1, evt.data2);
       mKeyboardHeld.set(evt.data1);
     }
     else if ((evt.status & 0xF0) == 0x80 || ((evt.status & 0xF0) == 0x90 && evt.data2 == 0))
     {
+      dbgLog("UI NoteOff " + juce::String(evt.data1) + " hold=" + juce::String(mDSP.mHold ? 1 : 0)
+           + " arp=" + juce::String(mDSP.mArp.mEnabled ? 1 : 0) + " arpNotes=" + juce::String((int)mDSP.mArp.mHeldNotes.size())
+           + " heldNotes=" + juce::String((int)mDSP.mHeldNotes.count()));
       mDSP.NoteOff(evt.data1);
       if (!mDSP.mHold)
         mKeyboardHeld.reset(evt.data1);
@@ -787,10 +816,10 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
       else sw1 |= 0x01;               // 16'
       if (getParamValue(kDcoPulse) > 0.5f) sw1 |= 0x08;
       if (getParamValue(kDcoSaw) > 0.5f)   sw1 |= 0x10;
-      bool chorusOff = getParamValue(kChorusOff) > 0.5f;
       bool chorusI   = getParamValue(kChorusI)   > 0.5f;
-      if (chorusOff) sw1 |= 0x20; // bit5: 1 = chorus off
-      if (!chorusOff && chorusI) sw1 |= 0x40; // bit6: 1 = level 1
+      bool chorusII  = getParamValue(kChorusII)  > 0.5f;
+      if (!chorusI && !chorusII) sw1 |= 0x20; // bit5: chorus off
+      if (chorusI) sw1 |= 0x40;               // bit6: level 1
       uint8_t sysex[] = { 0xF0, 0x41, 0x32, 0x00, 0x10, sw1, 0xF7 };
       midiMessages.addEvent(sysex, 7, 0);
     }
@@ -846,6 +875,14 @@ void KR106AudioProcessor::parameterChanged(int paramIdx, float newValue)
            + " portaMode=" + juce::String(mDSP.mPortaMode));
     }
     mDSP.SetParam(paramIdx, static_cast<double>(newValue));
+
+    // Keep kChorusOff in sync: clear it when either chorus is engaged
+    if ((paramIdx == kChorusI || paramIdx == kChorusII) && newValue > 0.5f)
+    {
+      if (getParamValue(kChorusOff) > 0.5f)
+        mParams[kChorusOff]->setValueNotifyingHost(0.f);
+    }
+
     if (paramIdx == kHold)
     {
       juce::String heldAfter;

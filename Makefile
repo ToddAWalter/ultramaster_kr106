@@ -8,7 +8,7 @@ build:
 	cmake --build $(BUILD_DIR) --config $(CONFIG)
 
 run: build
-	open $(BUILD_DIR)/KR106_artefacts/$(CONFIG)/Standalone/KR106.app
+	open "$(BUILD_DIR)/KR106_artefacts/$(CONFIG)/Standalone/Ultramaster KR-106.app"
 
 reaper: build
 	@echo "Restarting Reaper with fresh VST cache..."

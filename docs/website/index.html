@@ -422,6 +422,7 @@
 
   <div class="story">
     <h2 style="text-align: center;">Documentation</h2>
+    <p style="text-align: center;"><a href="guide.html">User's Guide</a> — Controls, keyboard, presets, and settings.</p>
     <p style="text-align: center;"><a href="midi_mapping.html">MIDI Mapping Reference</a> — Standard CC and Roland SysEx control assignments.</p>
   </div>
 
@@ -429,6 +430,29 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.2.3</span> Spectrum analyzer, UI improvements, Chorus fix</summary>
+      <ul>
+        <li>Spectrum analyzer scope mode (1024-point FFT, log frequency scale)</li>
+        <li>Custom LED popup menus for settings and patch manager (replaces system menus)</li>
+        <li>Patch selector grid showing all 128 presets in 8x16 layout</li>
+        <li>Settings and patch manager icon buttons (Tabler SVG icons)</li>
+        <li>Fix Chorus I not engaging when kChorusOff param was stale from preset</li>
+        <li>Fix SysEx echo loop toggling chorus state</li>
+        <li>User's guide page</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.2.2</span> ARM64 build, CDN icons, CLAP/LV2 in releases</summary>
+      <ul>
+        <li>Linux ARM64 (Raspberry Pi) build in CI and release workflows</li>
+        <li>CLAP and LV2 formats added to all platform release packages</li>
+        <li>Download button icons from cdn.simpleicons.org</li>
+        <li>Fix LV2 codesign on macOS (sign dylib inside bundle)</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.2.1</span> CSV preset bank, MIDI fixes, Default patch</summary>
       <ul>
         <li>Editable CSV patch bank with copy/paste, load/save, and bank file persistence</li>

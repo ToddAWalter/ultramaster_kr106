@@ -3,16 +3,145 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "BinaryData.h"
 #include "PluginProcessor.h"
+#include "KR106MenuSheet.h"
 
-// Small text display showing the current preset name.
-// Drag up/down to scroll through presets. Right-click for preset management.
+// ============================================================================
+// KR106PresetSheet — full-screen overlay showing all 128 presets in 8 columns
+// Black background, green 14-segment font. Click to select, Escape to close.
+// ============================================================================
+class KR106PresetSheet : public juce::Component
+{
+public:
+    static constexpr int kCols = 8;
+    static constexpr int kRows = 16;
+    static constexpr int kPadX = 4;
+
+    float rowH() const { return getHeight() / static_cast<float>(kRows); }
+
+    KR106PresetSheet(KR106AudioProcessor* proc, juce::Typeface::Ptr typeface,
+                     std::function<void()> onClose)
+        : mProcessor(proc), mTypeface(typeface), mOnClose(std::move(onClose))
+    {
+        setWantsKeyboardFocus(true);
+        setAlwaysOnTop(true);
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(KR106Theme::bg());
+
+        if (!mProcessor) return;
+
+        int current = mProcessor->getCurrentProgram();
+        int num = mProcessor->getNumPrograms();
+        float rh = rowH();
+        int colW = getWidth() / kCols;
+
+        g.setFont(KR106Theme::ledFont(mTypeface));
+
+        // Grid lines
+        g.setColour(KR106Theme::grid());
+        for (int row = 0; row <= kRows; row++)
+        {
+            int y = juce::roundToInt(row * rh);
+            g.drawHorizontalLine(y, 0.f, static_cast<float>(getWidth()));
+        }
+        for (int col = 1; col < kCols; col++)
+        {
+            int x = col * colW;
+            g.drawVerticalLine(x, 0.f, static_cast<float>(getHeight()));
+        }
+
+        // Preset entries
+        for (int i = 0; i < num && i < kCols * kRows; i++)
+        {
+            int col = i % kCols;
+            int row = i / kCols;
+            int x = col * colW;
+            int y = juce::roundToInt(row * rh);
+            int cellH = juce::roundToInt((row + 1) * rh) - y;
+
+            juce::String name = mProcessor->getProgramName(i);
+            KR106Theme::drawCell(g, name.substring(0, 14), x, y, colW, cellH,
+                                 i == mHoverIndex, i == current);
+        }
+
+        g.setColour(KR106Theme::border());
+        g.drawRect(getLocalBounds());
+    }
+
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        int idx = hitTest(e.getPosition());
+        if (idx != mHoverIndex)
+        {
+            mHoverIndex = idx;
+            repaint();
+        }
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        int idx = hitTest(e.getPosition());
+        if (idx >= 0)
+        {
+            mProcessor->setCurrentProgram(idx);
+        }
+        dismiss();
+    }
+
+    void mouseExit(const juce::MouseEvent&) override
+    {
+        if (mHoverIndex >= 0)
+        {
+            mHoverIndex = -1;
+            repaint();
+        }
+    }
+
+
+
+    void focusLost(FocusChangeType) override
+    {
+        dismiss();
+    }
+
+private:
+    int hitTest(juce::Point<int> pos) const
+    {
+        float rh = rowH();
+        int colW = getWidth() / kCols;
+        int col = pos.x / colW;
+        int row = static_cast<int>(pos.y / rh);
+        if (col < 0 || col >= kCols || row < 0 || row >= kRows) return -1;
+        int idx = row * kCols + col;
+        int num = mProcessor ? mProcessor->getNumPrograms() : 0;
+        return (idx >= 0 && idx < num) ? idx : -1;
+    }
+
+    void dismiss()
+    {
+        setVisible(false);
+        if (mOnClose) mOnClose();
+    }
+
+    KR106AudioProcessor* mProcessor = nullptr;
+    juce::Typeface::Ptr mTypeface;
+    std::function<void()> mOnClose;
+    int mHoverIndex = -1;
+};
+
+// ============================================================================
+// KR106PresetDisplay — preset name display with click-to-browse
+// Left-click: preset sheet. Right-click: context menu. Scroll: browse.
+// ============================================================================
 class KR106PresetDisplay : public juce::Component
 {
 public:
     KR106PresetDisplay(KR106AudioProcessor* processor)
         : mProcessor(processor)
     {
-        setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
         mTypeface = juce::Typeface::createSystemTypefaceFor(
             BinaryData::Segment14_otf,
             BinaryData::Segment14_otfSize);
@@ -45,6 +174,9 @@ public:
         g.drawSingleLineText(name, 3, h - 3);
     }
 
+    void openPresetSheet() { showPresetSheet(); }
+    void openContextMenu() { showContextMenu(); }
+
     void mouseDown(const juce::MouseEvent& e) override
     {
         if (e.mods.isPopupMenu())
@@ -52,40 +184,7 @@ public:
             showContextMenu();
             return;
         }
-        mDragAccum = 0.f;
-        setMouseCursor(juce::MouseCursor::NoCursor);
-        e.source.enableUnboundedMouseMovement(true);
-    }
-
-    void mouseDrag(const juce::MouseEvent& e) override
-    {
-        if (!mProcessor) return;
-
-        float dy = static_cast<float>(e.getDistanceFromDragStartY()) - mDragAccum;
-        mDragAccum = static_cast<float>(e.getDistanceFromDragStartY());
-
-        mDragRemainder += dy;
-        static constexpr float kThreshold = 8.f;
-
-        while (mDragRemainder <= -kThreshold)
-        {
-            mDragRemainder += kThreshold;
-            changePreset(-1);
-        }
-        while (mDragRemainder >= kThreshold)
-        {
-            mDragRemainder -= kThreshold;
-            changePreset(1);
-        }
-    }
-
-    void mouseUp(const juce::MouseEvent& e) override
-    {
-        mDragRemainder = 0.f;
-        setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
-        e.source.enableUnboundedMouseMovement(false);
-        auto screenPos = localPointToGlobal(juce::Point<int>(getWidth() / 2, getHeight() / 2));
-        juce::Desktop::getInstance().getMainMouseSource().setScreenPosition(screenPos.toFloat());
+        showPresetSheet();
     }
 
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override
@@ -108,29 +207,66 @@ private:
         repaint();
     }
 
+    void showPresetSheet()
+    {
+        if (!mProcessor || mSheet) return;
+
+        auto* editor = findParentComponentOfClass<juce::AudioProcessorEditor>();
+        juce::Component* target = editor ? static_cast<juce::Component*>(editor) : getTopLevelComponent();
+        if (!target) return;
+
+        int sheetH = target->getHeight();
+        int sheetW = target->getWidth();
+        int sheetY = 0;
+
+        mSheet = std::make_unique<KR106PresetSheet>(mProcessor, mTypeface,
+            [this]() {
+                // Deferred cleanup — can't delete during callback
+                juce::MessageManager::callAsync([this]() {
+                    if (mSheet)
+                    {
+                        if (auto* parent = mSheet->getParentComponent())
+                            parent->removeChildComponent(mSheet.get());
+                        mSheet.reset();
+                    }
+                    repaint();
+                });
+            });
+
+        mSheet->setBounds(0, sheetY, sheetW, sheetH);
+        target->addAndMakeVisible(mSheet.get());
+        mSheet->grabKeyboardFocus();
+    }
+
     void showContextMenu()
     {
-        juce::PopupMenu menu;
-        menu.addItem(1, "Overwrite Patch...", mProcessor->isCurrentPresetDirty());
-        menu.addSeparator();
-        menu.addItem(3, "Copy Patch");
-        menu.addItem(4, "Paste Patch", mHasClipboard);
-        menu.addItem(5, "Clear Patch");
-        menu.addSeparator();
-        menu.addItem(6, "Load Patch Bank...");
+        if (mContextMenu) return;
+
+        std::vector<KR106MenuItem> items;
+        items.push_back(KR106MenuItem::item(1, "Overwrite Patch", mProcessor->isCurrentPresetDirty()));
+        items.push_back(KR106MenuItem::sep());
+        items.push_back(KR106MenuItem::item(3, "Copy Patch"));
+        items.push_back(KR106MenuItem::item(4, "Paste Patch", mHasClipboard));
+        items.push_back(KR106MenuItem::item(5, "Clear Patch"));
+        items.push_back(KR106MenuItem::sep());
+        items.push_back(KR106MenuItem::item(6, "Load Patch Bank"));
       #if JUCE_MAC
-        menu.addItem(7, "Reveal in Finder");
+        items.push_back(KR106MenuItem::item(7, "Reveal in Finder"));
       #elif JUCE_WINDOWS
-        menu.addItem(7, "Show in File Explorer");
+        items.push_back(KR106MenuItem::item(7, "Show in Explorer"));
       #else
-        menu.addItem(7, "Show in File Manager");
+        items.push_back(KR106MenuItem::item(7, "Show in Files"));
       #endif
 
+        auto* editor = getTopLevelComponent();
+        if (!editor) return;
+
         juce::Component::SafePointer<KR106PresetDisplay> safeThis(this);
-        menu.showMenuAsync(juce::PopupMenu::Options(),
+        mContextMenu = std::make_unique<KR106MenuSheet>(std::move(items), mTypeface,
             [safeThis](int result)
             {
                 if (safeThis == nullptr) return;
+                safeThis->mContextMenu.reset();
                 switch (result)
                 {
                     case 1: safeThis->showSaveDialog(); break;
@@ -141,6 +277,15 @@ private:
                     case 7: safeThis->revealPresetFile(); break;
                 }
             });
+
+        int menuH = mContextMenu->calcHeight();
+        int menuW = mContextMenu->calcWidth();
+        auto displayInEditor = editor->getLocalArea(this, getLocalBounds());
+        int menuX = displayInEditor.getX() - menuW;
+        int menuY = (editor->getHeight() - menuH) / 2;
+
+        editor->addAndMakeVisible(mContextMenu.get());
+        mContextMenu->showAt({ menuX, menuY, menuW, menuH });
     }
 
     void showSaveDialog()
@@ -223,8 +368,12 @@ private:
 
     KR106AudioProcessor* mProcessor = nullptr;
     juce::Typeface::Ptr mTypeface;
-    float mDragAccum = 0.f;
-    float mDragRemainder = 0.f;
+
+    // Preset sheet overlay
+    std::unique_ptr<KR106PresetSheet> mSheet;
+
+    // Context menu overlay
+    std::unique_ptr<KR106MenuSheet> mContextMenu;
 
     // Copy/paste clipboard
     KR106Preset mClipboard;

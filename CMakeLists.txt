@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(KR106 VERSION 2.2.2)
+project(KR106 VERSION 2.2.3)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
 
@@ -39,6 +39,32 @@ juce_add_binary_data(KR106BinaryData SOURCES
 target_sources(KR106 PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/PluginProcessor.h
+    Source/PluginEditor.h
+    Source/KR106PresetManager.h
+    Source/KR106_Presets_JUCE.h
+    Source/Controls/KR106Bender.h
+    Source/Controls/KR106Button.h
+    Source/Controls/KR106Keyboard.h
+    Source/Controls/KR106MenuSheet.h
+    Source/Controls/KR106Knob.h
+    Source/Controls/KR106Misc.h
+    Source/Controls/KR106PresetDisplay.h
+    Source/Controls/KR106Scope.h
+    Source/Controls/KR106Slider.h
+    Source/Controls/KR106Switch.h
+    Source/Controls/KR106Tooltip.h
+    Source/DSP/KR106ADSR.h
+    Source/DSP/KR106Arpeggiator.h
+    Source/DSP/KR106Chorus.h
+    Source/DSP/KR106LFO.h
+    Source/DSP/KR106Oscillators.h
+    Source/DSP/KR106VCF.h
+    Source/DSP/KR106VcfFreqJ106.h
+    Source/DSP/KR106VcfFreqJ6.h
+    Source/DSP/KR106Voice.h
+    Source/DSP/KR106_DSP.h
+    Source/DSP/KR106_DSP_SetParam.h
 )
 
 target_include_directories(KR106 PRIVATE

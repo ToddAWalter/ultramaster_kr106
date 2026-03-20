@@ -510,6 +510,7 @@ private:
       {
         if (mHeldNotes.test(i))
         {
+          if (mArp.mEnabled) mArp.NoteOff(i);
           auto it = std::find(mUnisonStack.begin(), mUnisonStack.end(), i);
           if (it != mUnisonStack.end()) mUnisonStack.erase(it);
         }
@@ -533,6 +534,13 @@ private:
       }
     }
     mHeldNotes.reset();
+    // If arp was seeded from held notes (arp turned on while hold was on),
+    // mHeldNotes is empty but arp still has the notes. Clear them too.
+    if (mArp.mEnabled && !mArp.mHeldNotes.empty() && mKeysDown.none())
+    {
+      if (mArp.mLastNote >= 0) { SendToSynth(mArp.mLastNote, false, 0); mArp.mLastNote = -1; }
+      mArp.mHeldNotes.clear();
+    }
   }
 };
 

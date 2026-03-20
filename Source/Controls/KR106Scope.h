@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_dsp/juce_dsp.h>
 #include "PluginProcessor.h"
 #include <algorithm>
 #include <cmath>
@@ -40,20 +41,20 @@ public:
         if (mProcessor && mProcessor->getParam(kPower)->getValue() <= 0.5f)
             return;
 
-        if (mScaleIdx == 0)
-            paintWaveform(g, w, h, black, dim, mid, bright);
-        else if (mScaleIdx == 1)
-            paintADSR(g, w, h, dim, mid, bright);
-        else if (mScaleIdx == 2)
-            paintVCF(g, w, h, dim, mid, bright);
-        else
-            paintAbout(g, w, h, dim, mid, bright);
+        switch (mScaleIdx)
+        {
+            case 0: paintWaveform(g, w, h, black, dim, mid, bright); break;
+            case 1: paintSpectrum(g, w, h, dim, mid, bright); break;
+            case 2: paintADSR(g, w, h, dim, mid, bright); break;
+            case 3: paintVCF(g, w, h, dim, mid, bright); break;
+            default: paintAbout(g, w, h, dim, mid, bright); break;
+        }
     }
 
     void mouseDown(const juce::MouseEvent&) override
     {
         mAboutActive = false; // reset beam animation on any click
-        mScaleIdx = (mScaleIdx + 1) % 4; // 0: waveform, 1: ADSR, 2: VCF, 3: about
+        mScaleIdx = (mScaleIdx + 1) % 5; // 0: waveform, 1: spectrum, 2: ADSR, 3: VCF, 4: about
         repaint();
     }
 
@@ -70,8 +71,8 @@ public:
                          % KR106AudioProcessor::kScopeRingSize;
         if (newSamples == 0)
         {
-            if (mScaleIdx == 3) repaint(); // animate about screen beam
-            else if (mScaleIdx >= 1) repaintIfParamsChanged();
+            if (mScaleIdx == 4) repaint(); // animate about screen beam
+            else if (mScaleIdx >= 2) repaintIfParamsChanged();
             return;
         }
 
@@ -206,6 +207,100 @@ private:
                            1.f, static_cast<float>(y2 - y1));
                 lastY = y;
             }
+        }
+    }
+
+    // ---- Spectrum analyzer (FFT) ----
+    void paintSpectrum(juce::Graphics& g, int w, int h,
+                       juce::Colour dim, juce::Colour mid, juce::Colour bright)
+    {
+        static constexpr int kFFTOrder = 10; // 1024-point FFT
+        static constexpr int kFFTSize = 1 << kFFTOrder;
+
+        // Fill FFT input from ring buffer (most recent samples)
+        float fftData[kFFTSize * 2] = {};
+        int available = std::min(mSamplesAvail, kFFTSize);
+        for (int i = 0; i < available; i++)
+        {
+            int idx = (mRingWritePos - available + i + RING_SIZE) % RING_SIZE;
+            fftData[i] = mRing[idx];
+        }
+
+        // Apply Hann window
+        for (int i = 0; i < kFFTSize; i++)
+        {
+            float win = 0.5f * (1.f - cosf(juce::MathConstants<float>::twoPi * i / (kFFTSize - 1)));
+            fftData[i] *= win;
+        }
+
+        // FFT
+        juce::dsp::FFT fft(kFFTOrder);
+        fft.performRealOnlyForwardTransform(fftData);
+
+        // Compute magnitudes in dB
+        int numBins = kFFTSize / 2;
+        float magnitudes[kFFTSize / 2];
+        for (int i = 0; i < numBins; i++)
+        {
+            float re = fftData[i * 2];
+            float im = fftData[i * 2 + 1];
+            float mag = sqrtf(re * re + im * im) / numBins;
+            magnitudes[i] = 20.f * log10f(std::max(mag, 1e-7f));
+        }
+
+        // Display range
+        static constexpr float kMinDb = -90.f;
+        static constexpr float kMaxDb = 0.f;
+        static constexpr float kDbRange = kMaxDb - kMinDb;
+
+        float sr = 44100.f;
+        if (mProcessor) sr = static_cast<float>(mProcessor->getSampleRate());
+        float nyquist = sr * 0.5f;
+        float logMin = log10f(20.f);
+        float logMax = log10f(nyquist);
+        float logRange = logMax - logMin;
+
+        // Grid: vertical lines at decades
+        g.setColour(dim);
+        for (float freq : { 100.f, 1000.f, 10000.f })
+        {
+            float xf = (log10f(freq) - logMin) / logRange * (w - 1);
+            if (xf > 0 && xf < w)
+                g.fillRect(xf, 0.f, 1.f, static_cast<float>(h));
+        }
+
+        // Grid: horizontal lines every 18 dB
+        for (float db = kMinDb + 18.f; db < kMaxDb; db += 18.f)
+        {
+            float yf = (1.f - (db - kMinDb) / kDbRange) * (h - 1);
+            g.setColour(db == -18.f ? mid : dim);
+            g.fillRect(0.f, std::round(yf), static_cast<float>(w), 1.f);
+        }
+
+        if (available < 64) return; // not enough data
+
+        // Draw spectrum: map each pixel to a log-frequency bin
+        auto specY = [&](int px) -> int {
+            float logF = logMin + static_cast<float>(px) / (w - 1) * logRange;
+            float freq = powf(10.f, logF);
+            float binF = freq / nyquist * numBins;
+            int b0 = std::clamp(static_cast<int>(binF), 0, numBins - 2);
+            float frac = binF - b0;
+            float db = magnitudes[b0] + frac * (magnitudes[b0 + 1] - magnitudes[b0]);
+            db = std::clamp(db, kMinDb, kMaxDb);
+            return static_cast<int>(std::round((1.f - (db - kMinDb) / kDbRange) * (h - 1)));
+        };
+
+        g.setColour(bright);
+        int lastY = specY(0);
+        for (int px = 0; px < w; px++)
+        {
+            int y = specY(px);
+            int y1 = std::min(lastY, y);
+            int y2 = std::max(lastY, y) + 1;
+            g.fillRect(static_cast<float>(px), static_cast<float>(y1),
+                       1.f, static_cast<float>(y2 - y1));
+            lastY = y;
         }
     }
 
@@ -491,25 +586,31 @@ private:
         // Evaluate and draw magnitude response (normalized to 0 dB at DC)
         float k2 = k * k;
         float dcGainInv = (1.f + k) * (1.f + k); // compensate feedback passband loss
-        g.setColour(bright);
-        int lastY = h / 2;
-        for (int px = 0; px < w; px++)
-        {
+
+        auto evalDb = [&](int px) -> float {
             float logF = logMin + static_cast<float>(px) / (w - 1) * logRange;
             float freq = powf(10.f, logF);
             float x = freq / fc;
             float x2 = x * x;
-            float p2 = 1.f + x2;        // (1 + x²)
-            float p4 = p2 * p2;          // (1 + x²)²
-            float p8 = p4 * p4;          // (1 + x²)⁴
+            float p2 = 1.f + x2;
+            float p4 = p2 * p2;
+            float p8 = p4 * p4;
             float theta4 = 4.f * atanf(x);
             float denomSq = p8 + 2.f * k * p4 * cosf(theta4) + k2;
             float magSq = dcGainInv / denomSq;
             float db = 10.f * log10f(std::max(magSq, 1e-12f));
-            db = std::clamp(db, kMinDb, kMaxDb);
+            return std::clamp(db, kMinDb, kMaxDb);
+        };
 
-            int y = static_cast<int>(std::round((1.f - (db - kMinDb) / kDbRange) * (h - 1)));
+        auto dbToY = [&](float db) -> int {
+            return static_cast<int>(std::round((1.f - (db - kMinDb) / kDbRange) * (h - 1)));
+        };
 
+        g.setColour(bright);
+        int lastY = dbToY(evalDb(0));
+        for (int px = 0; px < w; px++)
+        {
+            int y = dbToY(evalDb(px));
             int y1 = std::min(lastY, y);
             int y2 = std::max(lastY, y) + 1;
             g.fillRect(static_cast<float>(px), static_cast<float>(y1),
@@ -674,7 +775,7 @@ private:
         }
     }
 
-    int mScaleIdx = 0; // 0: waveform, 1: ADSR, 2: VCF, 3: about
+    int mScaleIdx = 0; // 0: waveform, 1: spectrum, 2: ADSR, 3: VCF, 4: about
 
     KR106AudioProcessor* mProcessor = nullptr;
 
@@ -711,14 +812,14 @@ private:
         auto fbits = [](float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; };
 
         uint64_t h = 0;
-        if (mScaleIdx == 1) // ADSR
+        if (mScaleIdx == 2) // ADSR
         {
             h = fbits(dsp.mSliderA) ^ (static_cast<uint64_t>(fbits(dsp.mSliderD)) << 16)
               ^ (static_cast<uint64_t>(fbits(dsp.mSliderR)) << 32)
               ^ (static_cast<uint64_t>(fbits(mProcessor->getParam(kEnvS)->getValue())) << 8)
               ^ static_cast<uint64_t>(dsp.mAdsrMode);
         }
-        else // VCF
+        else // VCF (mScaleIdx == 3)
         {
             h = fbits(dsp.mSliderVcfFreq)
               ^ (static_cast<uint64_t>(fbits(mProcessor->getParam(kVcfRes)->getValue())) << 32)

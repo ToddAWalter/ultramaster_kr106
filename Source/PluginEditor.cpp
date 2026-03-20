@@ -139,13 +139,33 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     mScope = add(new KR106Scope(&p), 790, 7, 128, 74);
 
     // === PRESET DISPLAY ===
-    add(new KR106PresetDisplay(&p), 790, 86, 128, 14);
+    mPresetDisplay = add(new KR106PresetDisplay(&p), 790, 86, 128, 14);
+
+    // === ICON BUTTONS (below chorus) ===
+    {
+        static const char* gearSvg =
+            R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065" /><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></svg>)";
+
+        static const char* dbSvg =
+            R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a8 3 0 1 0 16 0a8 3 0 1 0 -16 0" /><path d="M4 6v6a8 3 0 0 0 16 0v-6" /><path d="M4 12v6a8 3 0 0 0 16 0v-6" /></svg>)";
+
+        add(new KR106IconButton(gearSvg, [this]() {
+            showSettingsMenu();
+        }), 742, 82, 14, 14);
+
+        add(new KR106IconButton(dbSvg, [this]() {
+            mPresetDisplay->openContextMenu();
+        }), 760, 82, 14, 14);
+    }
 
     // === KEYBOARD ===
     mKeyboard = add(new KR106Keyboard(&p, chevron), 129, 106, 792, 114);
 
     // Accept keyboard focus so UP/DN arrow keys cycle presets
     setWantsKeyboardFocus(true);
+
+    mMenuTypeface = juce::Typeface::createSystemTypefaceFor(
+        BinaryData::Segment14_otf, BinaryData::Segment14_otfSize);
 
     // Tooltip overlay — added last so it paints on top of all controls
     addAndMakeVisible(mTooltip);
@@ -163,60 +183,111 @@ KR106Editor::~KR106Editor()
 void KR106Editor::mouseDown(const juce::MouseEvent& e)
 {
     if (!e.mods.isPopupMenu()) return;
+    showSettingsMenu();
+}
 
-    juce::PopupMenu menu;
-    menu.addItem(1, "100%", true, mUIScale == 1.f);
-    menu.addItem(2, "150%", true, mUIScale == 1.5f);
-    menu.addItem(3, "200%", true, mUIScale == 2.f);
+void KR106Editor::showSettingsMenu()
+{
+    if (mSettingsMenu) return;
 
-    menu.addSeparator();
     int vc = mProcessor.mVoiceCount;
-    menu.addItem(10, "6 Voices", true, vc == 6);
-    menu.addItem(11, "8 Voices", true, vc == 8);
-    menu.addItem(12, "10 Voices", true, vc == 10);
+    std::vector<KR106MenuItem> items;
+    items.push_back(KR106MenuItem::item(1,  "100%", true, mUIScale == 1.f));
+    items.push_back(KR106MenuItem::item(2,  "150%", true, mUIScale == 1.5f));
+    items.push_back(KR106MenuItem::item(3,  "200%", true, mUIScale == 2.f));
+    items.push_back(KR106MenuItem::sep());
+    items.push_back(KR106MenuItem::item(10, "6 Voices",  true, vc == 6));
+    items.push_back(KR106MenuItem::item(11, "8 Voices",  true, vc == 8));
+    items.push_back(KR106MenuItem::item(12, "10 Voices", true, vc == 10));
+    items.push_back(KR106MenuItem::sep());
+    items.push_back(KR106MenuItem::item(20, "Ignore MIDI Velocity",      true, mProcessor.mIgnoreVelocity));
+    items.push_back(KR106MenuItem::item(21, "Limit Arp to Kbd Range", true, mProcessor.mArpLimitKbd));
 
-    menu.addSeparator();
-    menu.addItem(20, "Ignore MIDI Velocity", true, mProcessor.mIgnoreVelocity);
-    menu.addItem(21, "Limit Arp to Keyboard Range", true, mProcessor.mArpLimitKbd);
+    mSettingsMenu = std::make_unique<KR106MenuSheet>(std::move(items), mMenuTypeface,
+        [this](int r)
+        {
+            mSettingsMenu.reset();
+            if (r == 0) return;
+            float s = r == 1 ? 1.f : r == 2 ? 1.5f : r == 3 ? 2.f : 0.f;
+            if (s > 0.f && s != mUIScale)
+            {
+                mUIScale = s;
+                mProcessor.mUIScale = s;
+                if (s == 1.f)
+                    setTransform({});
+                else
+                    setTransform(juce::AffineTransform::scale(s));
+            }
+            int voices = r == 10 ? 6 : r == 11 ? 8 : r == 12 ? 10 : 0;
+            if (voices > 0 && voices != mProcessor.mVoiceCount)
+            {
+                mProcessor.mVoiceCount = voices;
+                mProcessor.mDSP.SetActiveVoices(voices);
+            }
+            if (r == 20)
+            {
+                mProcessor.mIgnoreVelocity = !mProcessor.mIgnoreVelocity;
+                mProcessor.mDSP.mIgnoreVelocity = mProcessor.mIgnoreVelocity;
+            }
+            if (r == 21)
+            {
+                mProcessor.mArpLimitKbd = !mProcessor.mArpLimitKbd;
+                mProcessor.mDSP.mArp.mLimitToKeyboard = mProcessor.mArpLimitKbd;
+            }
+            mProcessor.saveGlobalSettings();
+        });
 
-    menu.showMenuAsync({}, [this](int r) {
-        if (r == 0) return;
-        // UI scale
-        float s = r == 1 ? 1.f : r == 2 ? 1.5f : r == 3 ? 2.f : 0.f;
-        if (s > 0.f && s != mUIScale)
+    int menuH = mSettingsMenu->calcHeight();
+    int menuW = mSettingsMenu->calcWidth();
+    int menuX = (getWidth() - menuW) / 2;
+    int menuY = (getHeight() - menuH) / 2;
+
+    addAndMakeVisible(mSettingsMenu.get());
+    mSettingsMenu->showAt({ menuX, menuY, menuW, menuH });
+}
+
+int KR106Editor::qwertyToNote(int keyCode) const
+{
+    // Chromatic layout: A=C, W=C#, S=D, E=D#, D=E, F=F, T=F#, G=G, Y=G#, H=A, U=A#, J=B, K=C+1, O=C#+1, L=D+1
+    switch (keyCode)
+    {
+        case 'A': return mQwertyBase;
+        case 'W': return mQwertyBase + 1;
+        case 'S': return mQwertyBase + 2;
+        case 'E': return mQwertyBase + 3;
+        case 'D': return mQwertyBase + 4;
+        case 'F': return mQwertyBase + 5;
+        case 'T': return mQwertyBase + 6;
+        case 'G': return mQwertyBase + 7;
+        case 'Y': return mQwertyBase + 8;
+        case 'H': return mQwertyBase + 9;
+        case 'U': return mQwertyBase + 10;
+        case 'J': return mQwertyBase + 11;
+        case 'K': return mQwertyBase + 12;
+        case 'O': return mQwertyBase + 13;
+        case 'L': return mQwertyBase + 14;
+        default:  return -1;
+    }
+}
+
+void KR106Editor::qwertyAllNotesOff()
+{
+    for (int i = 0; i < 128; i++)
+    {
+        if (mQwertyDown[i])
         {
-            mUIScale = s;
-            mProcessor.mUIScale = s;
-            if (s == 1.f)
-                setTransform({});
-            else
-                setTransform(juce::AffineTransform::scale(s));
+            mProcessor.sendMidiFromUI(0x80, static_cast<uint8_t>(i), 0);
+            mKeyboard->setNoteFromMidi(i, false);
+            mQwertyDown[i] = false;
         }
-        // Voice count
-        int voices = r == 10 ? 6 : r == 11 ? 8 : r == 12 ? 10 : 0;
-        if (voices > 0 && voices != mProcessor.mVoiceCount)
-        {
-            mProcessor.mVoiceCount = voices;
-            mProcessor.mDSP.SetActiveVoices(voices);
-        }
-        // Velocity
-        if (r == 20)
-        {
-            mProcessor.mIgnoreVelocity = !mProcessor.mIgnoreVelocity;
-            mProcessor.mDSP.mIgnoreVelocity = mProcessor.mIgnoreVelocity;
-        }
-        // Arp keyboard limit
-        if (r == 21)
-        {
-            mProcessor.mArpLimitKbd = !mProcessor.mArpLimitKbd;
-            mProcessor.mDSP.mArp.mLimitToKeyboard = mProcessor.mArpLimitKbd;
-        }
-        mProcessor.saveGlobalSettings();
-    });
+    }
 }
 
 bool KR106Editor::keyPressed(const juce::KeyPress& key)
 {
+    int code = key.getKeyCode();
+
+    // Arrow/page keys: preset navigation
     int delta = 0;
     if (key == juce::KeyPress::upKey)        delta = -1;
     else if (key == juce::KeyPress::downKey) delta =  1;
@@ -233,7 +304,122 @@ bool KR106Editor::keyPressed(const juce::KeyPress& key)
         repaint();
         return true;
     }
-    return false;
+
+    // Z/X: octave shift
+    if (code == 'Z') { mQwertyBase = juce::jmax(0, mQwertyBase - 12);  qwertyAllNotesOff(); return true; }
+    if (code == 'X') { mQwertyBase = juce::jmin(108, mQwertyBase + 12); qwertyAllNotesOff(); return true; }
+
+    // 1-9: toggle panel buttons
+    if (code >= '1' && code <= '9')
+    {
+        int idx = code - '1';
+
+        // 7/8/9: chorus buttons need special handling (mutual interaction)
+        if (idx == 6) // '7' = Chorus Off: turn off both I and II
+        {
+            auto setParam = [&](int pid, float v) {
+                auto* p = mProcessor.getParam(pid);
+                p->beginChangeGesture();
+                p->setValueNotifyingHost(v);
+                p->endChangeGesture();
+            };
+            setParam(kChorusI, 0.f);
+            setParam(kChorusII, 0.f);
+            return true;
+        }
+        if (idx == 7 || idx == 8) // '8' = Chorus I, '9' = Chorus II: toggle
+        {
+            int pid = (idx == 7) ? kChorusI : kChorusII;
+            auto* p = mProcessor.getParam(pid);
+            float next = (p->getValue() > 0.5f) ? 0.f : 1.f;
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(next);
+            p->endChangeGesture();
+            return true;
+        }
+
+        static constexpr int kButtonMap[] = {
+            kTranspose, kHold, kArpeggio,
+            kDcoPulse, kDcoSaw, kDcoSubSw
+        };
+        auto* p = mProcessor.getParam(kButtonMap[idx]);
+        double cur = p->getValue();
+        double next = (cur > 0.5) ? 0.0 : 1.0;
+        p->beginChangeGesture();
+        p->setValueNotifyingHost(static_cast<float>(next));
+        p->endChangeGesture();
+        return true;
+    }
+
+    // QWERTY note keys
+    int note = qwertyToNote(code);
+    if (note >= 0 && note <= 127)
+    {
+        if (!mQwertyDown[note])
+        {
+            bool holdOn = mProcessor.getParam(kHold)->getValue() > 0.5f;
+            bool alreadyHeld = holdOn && mProcessor.mKeyboardHeld.test(note);
+
+            if (alreadyHeld)
+            {
+                // Second press on held note: force release (same as mouse second-click)
+                mProcessor.forceReleaseNote(note);
+                mKeyboard->setNoteFromMidi(note, false);
+            }
+            else
+            {
+                mQwertyDown[note] = true;
+                mProcessor.sendMidiFromUI(0x90, static_cast<uint8_t>(note), 127);
+                mKeyboard->setNoteFromMidi(note, true);
+            }
+        }
+        return true;  // consume key repeats too
+    }
+
+    return false;  // unhandled keys pass to DAW
+}
+
+bool KR106Editor::keyStateChanged(bool /*isKeyDown*/)
+{
+    // Check for released QWERTY keys
+    bool handled = false;
+    for (int i = 0; i < 128; i++)
+    {
+        if (!mQwertyDown[i]) continue;
+        int code = -1;
+        int offset = i - mQwertyBase;
+        switch (offset)
+        {
+            case 0:  code = 'A'; break;
+            case 1:  code = 'W'; break;
+            case 2:  code = 'S'; break;
+            case 3:  code = 'E'; break;
+            case 4:  code = 'D'; break;
+            case 5:  code = 'F'; break;
+            case 6:  code = 'T'; break;
+            case 7:  code = 'G'; break;
+            case 8:  code = 'Y'; break;
+            case 9:  code = 'H'; break;
+            case 10: code = 'U'; break;
+            case 11: code = 'J'; break;
+            case 12: code = 'K'; break;
+            case 13: code = 'O'; break;
+            case 14: code = 'L'; break;
+            default: break;
+        }
+        if (code >= 0 && !juce::KeyPress::isKeyCurrentlyDown(code))
+        {
+            mQwertyDown[i] = false;
+            mProcessor.sendMidiFromUI(0x80, static_cast<uint8_t>(i), 0);
+            // Don't visually release if Hold is on — updateFromProcessor
+            // keeps the key lit via mKeyboardHeld (same as mouse behavior)
+            bool holdOn = mProcessor.getParam(kHold)->getValue() > 0.5f;
+            if (!holdOn)
+                mKeyboard->setNoteFromMidi(i, false);
+            handled = true;
+        }
+    }
+    return handled;
 }
 
 void KR106Editor::paint(juce::Graphics& g)

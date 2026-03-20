@@ -11,6 +11,7 @@
 #include "Controls/KR106Keyboard.h"
 #include "Controls/KR106Tooltip.h"
 #include "Controls/KR106PresetDisplay.h"
+#include "Controls/KR106MenuSheet.h"
 
 class KR106Editor : public juce::AudioProcessorEditor,
                     private juce::Timer
@@ -21,8 +22,16 @@ public:
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
+    bool keyStateChanged(bool isKeyDown) override;
+    void showSettingsMenu();
 
 private:
+    int qwertyToNote(int keyCode) const;
+    void qwertyAllNotesOff();
+
+    int mQwertyBase = 48;  // C3
+    bool mQwertyDown[128] = {};
+
     void timerCallback() override;
 
     KR106AudioProcessor& mProcessor;
@@ -31,6 +40,7 @@ private:
     juce::OwnedArray<juce::Component> mControls;
     KR106Scope* mScope = nullptr;
     KR106Keyboard* mKeyboard = nullptr;
+    KR106PresetDisplay* mPresetDisplay = nullptr;
     KR106ClipLED* mClipLED = nullptr;
     KR106ClipLED* mClipLED2 = nullptr;
     KR106Tooltip mTooltip;
@@ -39,4 +49,7 @@ private:
     bool mNeedChevronRestore = true;
     bool mWasActive = true;
     int mRepaintDivider = 0;
+
+    juce::Typeface::Ptr mMenuTypeface;
+    std::unique_ptr<KR106MenuSheet> mSettingsMenu;
 };

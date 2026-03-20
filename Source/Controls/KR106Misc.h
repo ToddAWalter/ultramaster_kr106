@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <functional>
 
 class KR106AudioProcessor;
 
@@ -73,6 +74,42 @@ public:
 
 private:
     juce::RangedAudioParameter* mParam = nullptr;
+};
+
+// ============================================================================
+// KR106IconButton — small clickable button that renders a Tabler SVG icon
+// ============================================================================
+class KR106IconButton : public juce::Component
+{
+public:
+    KR106IconButton(const juce::String& svgText, std::function<void()> onClick)
+        : mOnClick(std::move(onClick))
+    {
+        // Replace currentColor with a placeholder we can swap at paint time
+        auto svg = svgText.replace("currentColor", "#5a5a5a");
+        if (auto xml = juce::XmlDocument::parse(svg))
+            mDrawable = juce::Drawable::createFromSVG(*xml);
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        if (!mDrawable) return;
+        auto bounds = getLocalBounds().toFloat().reduced(1.f);
+        auto copy = mDrawable->createCopy();
+        auto colour = mHover ? juce::Colour(0, 0, 0) : juce::Colour(34, 34, 34);
+        copy->replaceColour(juce::Colour(0x5a, 0x5a, 0x5a), colour);
+        copy->drawWithin(g, bounds, juce::RectanglePlacement::centred, 1.0f);
+    }
+
+    void mouseEnter(const juce::MouseEvent&) override { mHover = true; repaint(); }
+    void mouseExit(const juce::MouseEvent&) override  { mHover = false; repaint(); }
+    void mouseDown(const juce::MouseEvent&) override   { if (mOnClick) mOnClick(); }
+
+private:
+    std::unique_ptr<juce::Drawable> mDrawable;
+    std::function<void()> mOnClick;
+    bool mHover = false;
 };
 
 // ============================================================================
