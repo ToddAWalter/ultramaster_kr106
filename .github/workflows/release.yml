@@ -43,7 +43,7 @@ jobs:
           codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/AU/Ultramaster KR-106.component"
           codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/VST3/Ultramaster KR-106.vst3"
           codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/CLAP/Ultramaster KR-106.clap"
-          codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/LV2/Ultramaster KR-106.lv2"
+          find "$ARTS/LV2/Ultramaster KR-106.lv2" -name '*.dylib' -exec codesign --force --options runtime --sign "$IDENTITY" {} \;
           codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/Standalone/Ultramaster KR-106.app"
 
       - name: Notarize plugins
@@ -70,7 +70,6 @@ jobs:
           xcrun stapler staple "$ARTS/AU/Ultramaster KR-106.component"
           xcrun stapler staple "$ARTS/VST3/Ultramaster KR-106.vst3"
           xcrun stapler staple "$ARTS/CLAP/Ultramaster KR-106.clap"
-          xcrun stapler staple "$ARTS/LV2/Ultramaster KR-106.lv2"
           xcrun stapler staple "$ARTS/Standalone/Ultramaster KR-106.app"
 
       - name: Package
