@@ -42,7 +42,7 @@ jobs:
 
   build-arm64:
     runs-on: ubuntu-24.04-arm
-    container: debian:bullseye
+    container: debian:bookworm
     steps:
       - name: Install system tools
         run: |
@@ -58,8 +58,8 @@ jobs:
           apt-get install -y \
             libasound2-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
-            libfreetype6-dev \
-            libwebkit2gtk-4.0-dev \
+            libfreetype-dev \
+            libwebkit2gtk-4.1-dev \
             mesa-common-dev libgl-dev
 
       - name: Configure

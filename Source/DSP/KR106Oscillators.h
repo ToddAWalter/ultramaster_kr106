@@ -140,10 +140,12 @@ struct Oscillators {
     // Phase wraparound: saw resets, sub toggles, blip triggers.
     // Wrap BEFORE waveform computation so the fractional overshoot
     // (mPos after wrap) tells polyBLEP exactly where we crossed.
+    bool sawReset = false;
     if (mPos >= 1.f) {
       mPos -= 1.f;
       mSubState = !mSubState;
       sync = mSubState; // sync pulse every 2 DCO cycles (sub period)
+      sawReset = true;
       mBlipEnv = 1.f;
     }
 
@@ -171,9 +173,9 @@ struct Oscillators {
 
     // --- Sub: CD4013 flip-flop + polyBLEP ---
     // Half-frequency square wave, phase-locked to saw reset.
-    // Measured harmonics match ideal 1/n — no audible filtering in-band.
+    // PolyBLEP on every saw reset (both sub transitions), not just sync.
     float sub = mSubState ? -1.f : 1.f;
-    if (sync)
+    if (sawReset)
       sub += PolyBLEP(mPos, cps) * (mSubState ? -1.f : 1.f);
 
     // --- Oscillator mixing ---
