@@ -117,13 +117,13 @@ struct HPF
       mHpS = lp + v;
       return input - lp;
     }
-    if (mMode == 1) return input; // was: DCBlock(input)
+    if (mMode == 1) return DCBlock(input);
     if (mMode == 0)
     {
       float v = (input - mLpS) * mG / (1.f + mG);
       float lp = mLpS + v;
       mLpS = lp + v;
-      return input + (kShelfGainLin - 1.f) * lp; // was: DCBlock(...)
+      return DCBlock(input + (kShelfGainLin - 1.f) * lp);
     }
     float v = (input - mHpS) * mG / (1.f + mG);
     float lp = mHpS + v;

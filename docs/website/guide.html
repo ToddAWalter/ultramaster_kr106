@@ -87,7 +87,7 @@
   }
 
   details {
-    margin-top: 0.8rem;
+    margin-top: 0.3rem;
   }
 
   summary {
@@ -103,14 +103,14 @@
 
   summary::before {
     content: '\25b8';
-    color: #555;
-    font-size: 0.7rem;
+    color: #e8e8e8;
+    font-size: 1rem;
     flex-shrink: 0;
   }
 
   details[open] > summary::before {
     content: '\25be';
-    color: #4455dd;
+    color: #e8e8e8;
   }
 
   summary h2 {
@@ -429,6 +429,38 @@
     <li><strong>VCF Oversample 2x / 4x</strong> Filter oversampling factor. 4x (default) gives clean self-oscillation tracking up to 20 kHz. 2x uses less CPU but may alias at high cutoff + high resonance.</li>
     <li><strong>Component Variance</strong> Opens the per-voice variance editor. See below.</li>
   </ul>
+  </details>
+
+  <!-- ============================================================ -->
+  <details>
+  <summary style="flex-wrap: wrap;">
+    <h2>Component Variance</h2>
+    <img src="component_variance.png" alt="Component Variance Editor" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
+  </summary>
+
+  <p>Real analog polysynths have slight differences between voices due to component tolerances &mdash; each VCF, VCA, and ADSR circuit is built from discrete parts that are never perfectly matched. The variance editor lets you control these per-voice offsets to dial in exactly how much analog character you want.</p>
+
+  <h3>Parameters</h3>
+  <ul>
+    <li><strong>VCF FRQ</strong> Filter cutoff offset in cents (&plusmn;10 cts).</li>
+    <li><strong>DCO FRQ</strong> Oscillator pitch offset in cents (&plusmn;30 cts).</li>
+    <li><strong>ADSR</strong> Envelope timing scale as a percentage (&plusmn;15 pct).</li>
+    <li><strong>VCA</strong> Amplifier gain offset as a percentage (&plusmn;12 pct).</li>
+    <li><strong>PW Lo</strong> Pulse width minimum (around 50 pct).</li>
+    <li><strong>PW Hi</strong> Pulse width maximum (around 95 pct).</li>
+  </ul>
+
+  <h3>Editing</h3>
+  <p>Click a cell to select it, then drag up/down to adjust. Arrow keys also work: up/down to change the value, left/right to move between columns. 100 pixels of drag covers the full range of each parameter.</p>
+
+  <h3>Tune Presets</h3>
+  <ul>
+    <li><strong>Robot Tune</strong> All components at spec &mdash; every voice is identical. Clean and precise.</li>
+    <li><strong>Human Tune</strong> Subtle randomized offsets (1/5 of full range) &mdash; a well-maintained unit.</li>
+    <li><strong>Out of Tune</strong> Full random variance &mdash; a synth that's been sitting in a garage for 40 years.</li>
+  </ul>
+
+  <p>Variance values are saved globally and persist between sessions. On first launch, a deterministic set of offsets is generated to model one specific "hardware unit."</p>
   </details>
 
   <!-- ============================================================ -->

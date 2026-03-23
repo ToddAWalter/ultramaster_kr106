@@ -477,7 +477,7 @@ private:
         {
             if (db > kMaxDb) continue;
             float yf = (1.f - (db - kMinDb) / kDbRange) * (h - 1);
-            g.setColour(db == 0.f ? mid : dim);
+            g.setColour(dim);
             g.fillRect(0.f, std::round(yf), static_cast<float>(w), 1.f);
         }
 
@@ -1075,17 +1075,26 @@ private:
             }
         }
 
-        // Draw drag vector (pull-back cue style)
+        // Draw drag vector as filled cells (Bresenham on 16×8 grid)
         if (mDragging)
         {
-            float ox = static_cast<float>(mDragOriginX);
-            float oy = static_cast<float>(mDragOriginY);
-            float mx = static_cast<float>(mDragEndX);
-            float my = static_cast<float>(mDragEndY);
-
-            // Dim line: origin to mouse (the pull-back)
-            g.setColour(bright);
-            g.drawLine(ox, oy, mx, my, 1.f);
+            int c0 = mDragOriginX / cellW, r0 = mDragOriginY / cellH;
+            int c1 = std::clamp(mDragEndX / cellW, 0, cols - 1);
+            int r1 = std::clamp(mDragEndY / cellH, 0, rows - 1);
+            int dx = std::abs(c1 - c0), dy = -std::abs(r1 - r0);
+            int sx = c0 < c1 ? 1 : -1, sy = r0 < r1 ? 1 : -1;
+            int err = dx + dy;
+            g.setColour(mid);
+            for (;;)
+            {
+                int idx = r0 * cols + c0;
+                if (idx != cur) // don't overdraw the selected cell
+                    g.fillRect(c0 * cellW, r0 * cellH, cellW - 1, cellH - 1);
+                if (c0 == c1 && r0 == r1) break;
+                int e2 = 2 * err;
+                if (e2 >= dy) { err += dy; c0 += sx; }
+                if (e2 <= dx) { err += dx; r0 += sy; }
+            }
         }
     }
 
