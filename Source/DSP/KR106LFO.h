@@ -207,12 +207,16 @@ struct LFO
   // Process one sample, returns [-1, +1]
   float Process()
   {
-    bool newState = (mMode == 0) ? mActive : mTrigger;
+    // Auto: LFO runs while any voice is active, delay envelope free-runs
+    //        (persists across legato notes, only resets when all voices stop)
+    // Manual: LFO runs while any voice is active, delay envelope resets
+    //         on each new note-on (retrigger on every keypress)
+    bool newState = mActive || mTrigger;
 
     if (newState && !mWasActive)
     {
-      // Auto mode: only reset envelope on first note (not legato)
-      // Manual mode: always reset on trigger
+      // Auto: only reset envelope when starting from silence
+      // Manual: always reset on new activation
       if (mMode == 1 || mAmp <= 0.f)
       {
         mAmp = 0.f;
@@ -222,9 +226,6 @@ struct LFO
           RecalcDelay106();
       }
     }
-
-    if (!newState && mWasActive && mMode == 1)
-      mAmp = 0.f; // manual mode: cut immediately on release
 
     mWasActive = newState;
 
