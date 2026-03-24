@@ -73,9 +73,7 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
       k->setMidiLearn(&p, kMasterVol);
       add(k, 30, 118, 28, 27); }
     mClipLED = dynamic_cast<KR106ClipLED*>(
-        add(new KR106ClipLED(ledRed, 2.5f), 62, 127, 9, 9));
-    mClipLED2 = dynamic_cast<KR106ClipLED*>(
-        add(new KR106ClipLED(ledRed, 1.5f), 53, 127, 9, 9));
+        add(new KR106ClipLED(ledRed, 1.f), 53, 127, 9, 9));
     { auto* k = new KR106Knob(param(kPortaRate), smallKnob, tip, 32);
       k->setMidiLearn(&p, kPortaRate);
       add(k, 66, 118, 28, 27); }
@@ -281,7 +279,6 @@ void KR106Editor::showSettingsMenu()
                 mProcessor.mVcfOversample = newOS;
                 mProcessor.mDSP.ForEachVoice([newOS](kr106::Voice<float>& v) {
                     v.mVCF.SetOversample(newOS);
-                    v.mOsc.Init(v.mSampleRate * static_cast<float>(newOS));
                 });
             }
             if (r == 40)
@@ -433,13 +430,7 @@ bool KR106Editor::keyPressed(const juce::KeyPress& key)
         return true;
     }
 
-    // '0': filter test mode (noise + sweep)
-    if (code == '0')
-    {
-        mProcessor.mDSP.mFilterTestTrigger.store(true);
-        return true;
-    }
-
+    // '0': oscillator test mode (saw/pulse/sub through oversampled VCF, no HPF/chorus)
     // QWERTY note keys
     int note = qwertyToNote(code);
     if (note >= 0 && note <= 127)
@@ -574,7 +565,6 @@ void KR106Editor::timerCallback()
     mKeyboard->updateFromProcessor();
     float peak = mProcessor.mPeakLevel.exchange(0.f, std::memory_order_relaxed);
     mClipLED->update(peak);
-    mClipLED2->update(peak);
 
     // Repaint knobs/sliders/switches at ~7.5 Hz (every 4th tick) for host
     // automation sync — they don't change during normal MIDI playback.

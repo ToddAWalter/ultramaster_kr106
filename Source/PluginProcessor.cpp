@@ -34,7 +34,7 @@ static bool sExcludeMaskInit = []() {
 
 // MIDI CC → EParams mapping (-1 = unmapped)
 static constexpr int kCCtoParam[128] = {
-  -1, -1, -1, kDcoLfo, -1, kPortaRate, -1, kVcaLevel,  // CC 0-7
+  -1, -1, -1, kDcoLfo, -1, kPortaRate, -1, kMasterVol,  // CC 0-7
   -1, kDcoSub, -1, -1, kHpfFreq, kDcoNoise, -1, -1,       // CC 8-15
   -1, -1, -1, -1, -1, -1, -1, -1,                       // CC 16-23
   -1, -1, -1, -1, -1, -1, -1, -1,                       // CC 24-31
@@ -408,14 +408,14 @@ KR106AudioProcessor::KR106AudioProcessor()
   // Master volume knob (applied after scope, before output)
   SFV fmtMasterVol = [](float v, int) {
     if (v <= 0.f) return juce::String("-inf dB");
-    double dB = 20.0 * std::log10((double)v);
+    double dB = 20.0 * std::log10((double)(v * v)); // squared taper
     if (dB >= 0.0) return "+" + juce::String(dB, 1) + " dB";
     return juce::String(dB, 1) + " dB";
   };
   VFS parseMasterVol = [](const juce::String& text) -> float {
     if (text.containsIgnoreCase("inf")) return 0.f;
     double dB = text.getDoubleValue();
-    return juce::jlimit(0.f, 1.f, static_cast<float>(std::pow(10.0, dB / 20.0)));
+    return juce::jlimit(0.f, 1.f, static_cast<float>(std::sqrt(std::pow(10.0, dB / 20.0))));
   };
   addSlider(kMasterVol, "Master Volume", 0.5f, 0.f, 1.f, fmtMasterVol, parseMasterVol);
 
@@ -781,7 +781,8 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
   // --- Process DSP ---
   float* outputs[2] = { buffer.getWritePointer(0),
                          nOutputs > 1 ? buffer.getWritePointer(1) : buffer.getWritePointer(0) };
-  mDSP.mMasterVol = getParamValue(kMasterVol);
+  float vol = getParamValue(kMasterVol);
+  mDSP.mMasterVol = vol * vol; // audio taper (squared)
   mDSP.ProcessBlock(nullptr, outputs, nOutputs, nFrames);
 
   // --- Mute if power off ---
@@ -806,19 +807,7 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
       mPeakLevel.store(peak, std::memory_order_relaxed);
   }
 
-  // --- Output saturation: Padé tanh(x*0.35) ---
-  for (int c = 0; c < nOutputs; c++)
-  {
-    float* ch = buffer.getWritePointer(c);
-    for (int i = 0; i < nFrames; i++)
-    {
-      float x = ch[i] * 0.65f;
-      float x2 = x * x;
-      ch[i] = x * (27.f + x2) / (27.f + 9.f * x2);
-    }
-  }
-
-  // --- Write scope ring buffer (after volume and saturation) ---
+  // --- Write scope ring buffer ---
   {
     float* syncBuf = mDSP.GetSyncBuffer();
     int wp = mScopeWritePos.load(std::memory_order_relaxed);
@@ -1195,7 +1184,6 @@ void KR106AudioProcessor::loadGlobalSettings()
   mVcfOversample = ((int)vcfOS == 2) ? 2 : 4;
   mDSP.ForEachVoice([this](kr106::Voice<float>& v) {
     v.mVCF.SetOversample(mVcfOversample);
-    v.mOsc.Init(v.mSampleRate * static_cast<float>(mVcfOversample));
   });
 
   // Load MIDI learn CC map (param→CC, multiple params can share a CC)

@@ -418,7 +418,70 @@ public:
       if (mFilterTestActive) return;
     }
 
-    // CSV and chromatic test modes removed — use tools/vcf-analyze instead.
+    // --- Oscillator test mode (triggered by '9' key) ---
+    if (mOscTestTrigger.exchange(false))
+    {
+      mOscTestActive = true;
+      mOscTestPhase = 0.f;
+      mOscTestStep = 0;
+      mOscTestBLEP.Reset();
+      mOscTestBLEP.Init(mSampleRate);
+      mOscTestOsc.Reset();
+      mOscTestOsc.Init(mSampleRate);
+      mOscTestOsc.SetTables(&mSawTables);
+    }
+
+    if (mOscTestActive)
+    {
+      float sr = std::max(mSampleRate, 44100.f);
+      float phaseInc = 1.f / (kOscTestNoteSec * sr);
+
+      // C1 = 32.7 Hz, pw = 50%, raw at 1x sample rate
+      float cps = 32.7f / sr;
+      float subAT = kr106::OscillatorsWT::AudioTaper(1.f);
+
+      for (int s = 0; s < nFrames; s++)
+      {
+        float out = 0.f;
+        bool inTone = (mOscTestPhase * kOscTestNoteSec) < kOscTestToneSec;
+
+        if (inTone && mOscTestStep < kOscTestTotalSteps)
+        {
+          int waveIdx = mOscTestStep % 3; // 0=saw, 1=pulse, 2=sub
+          bool sawOn   = (waveIdx == 0);
+          bool pulseOn = (waveIdx == 1);
+          bool subOn   = (waveIdx == 2);
+          bool useBLEP = (mOscTestStep < 3);
+          bool sync = false;
+
+          if (useBLEP)
+            out = mOscTestBLEP.Process(cps, 0.5f, sawOn, pulseOn, subOn, subAT, 0.f, sync);
+          else
+            out = mOscTestOsc.Process(cps, 0.5f, sawOn, pulseOn, subOn, subAT, 0.f, sync);
+        }
+
+        for (int c = 0; c < nOutputs; c++)
+          outputs[c][s] = static_cast<T>(out);
+
+        mOscTestPhase += phaseInc;
+        if (mOscTestPhase >= 1.f)
+        {
+          mOscTestPhase -= 1.f;
+          mOscTestStep++;
+          mOscTestBLEP.Reset();
+          mOscTestBLEP.Init(mSampleRate);
+          mOscTestOsc.Reset();
+          mOscTestOsc.Init(mSampleRate);
+          mOscTestOsc.SetTables(&mSawTables);
+          if (mOscTestStep >= kOscTestTotalSteps)
+          {
+            mOscTestActive = false;
+            break;
+          }
+        }
+      }
+      if (mOscTestActive) return;
+    }
 
     if (static_cast<int>(mLFOBuffer.size()) < nFrames)
     {
@@ -486,8 +549,10 @@ public:
   void Reset(double sampleRate, int blockSize)
   {
     mSampleRate = static_cast<float>(sampleRate);
-    ForEachVoice([sampleRate, blockSize](kr106::Voice<T>& v) {
+    mSawTables.Init(mSampleRate);
+    ForEachVoice([this, sampleRate, blockSize](kr106::Voice<T>& v) {
       v.SetSampleRateAndBlockSize(sampleRate, blockSize);
+      v.mOsc.SetTables(&mSawTables);
     });
     // Clear voice allocation so prepareToPlay re-trigger starts clean
     std::fill(std::begin(mVoiceNote), std::end(mVoiceNote), -1);
@@ -541,6 +606,7 @@ public:
 
 public:
   std::vector<std::unique_ptr<kr106::Voice<T>>> mVoices;
+  kr106::SawTables mSawTables;
   kr106::LFO mLFO;
   kr106::HPF mHPF;
   kr106::Chorus mChorus;
@@ -596,6 +662,22 @@ public:
   uint32_t mTestNoiseSeed = 12345;
   float mTestPhase = 0.f;   // position within current note [0,1)
   int mTestStep = 0;        // which step in the sequence
+
+  // --- Oscillator test mode (toggled by '9' key) ---
+  // Renders saw, pulse, sub individually through oversampled VCF (wide open),
+  // no HPF or chorus. For recording raw oscillator output.
+  std::atomic<bool> mOscTestTrigger{false};
+  bool mOscTestActive = false;
+  kr106::Oscillators mOscTestBLEP;
+  kr106::OscillatorsWT mOscTestOsc;
+  kr106::VCF mOscTestVCF;
+  kr106::Downsampler2x mOscTestDown1, mOscTestDown2;
+  float mOscTestPhase = 0.f;
+  int mOscTestStep = 0; // 0-2=polyBLEP saw/pulse/sub, 3-5=wavetable saw/pulse/sub
+  static constexpr int kOscTestTotalSteps = 6;
+  static constexpr float kOscTestToneSec = 2.f;
+  static constexpr float kOscTestSilenceSec = 0.5f;
+  static constexpr float kOscTestNoteSec = kOscTestToneSec + kOscTestSilenceSec;
 
   // Sequence layout:
   //   Step 0:   self-osc 200Hz R=1.0, 1.75s tone + 0.25s silence

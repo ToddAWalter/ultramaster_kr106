@@ -7,6 +7,7 @@
 
 #include "KR106ADSR.h"
 #include "KR106Oscillators.h"
+#include "KR106OscillatorsWT.h"
 #include "KR106VCF.h"
 #include "KR106VcfFreqJ106.h"
 
@@ -22,12 +23,10 @@ template <typename T> class Voice
 {
 public:
   // DSP modules
-  Oscillators mOsc;
+  OscillatorsWT mOsc;
   VCF mVCF;
   ADSR mADSR;
 
-  // Voice-level downsamplers for combined osc+VCF oversampling
-  Downsampler2x mVoiceDown1, mVoiceDown2;
 
 
   // Voice control (replaces iPlug2 mInputs ControlRamps)
@@ -463,17 +462,7 @@ public:
     mSampleRate = static_cast<float>(sampleRate);
     mADSR.SetSampleRate(mSampleRate);
     mVCF.SetSampleRate(mSampleRate);
-    mOsc.Init(mSampleRate * static_cast<float>(mVCF.mOversample));
-    {
-      static constexpr double kCoeffs2x[12] = {
-        0.036681502163648017, 0.13654762463195794, 0.27463175937945444,
-        0.42313861743656711, 0.56109869787919531, 0.67754004997416184,
-        0.76974183386322703, 0.83988962484963892, 0.89226081800387902,
-        0.9315419599631839,  0.96209454837808417, 0.98781637073289585
-      };
-      mVoiceDown1.set_coefs(kCoeffs2x);
-      mVoiceDown2.set_coefs(kCoeffs2x);
-    }
+    mOsc.Init(mSampleRate);
 
     // Precomputed constants for VCF frequency calculation.
     // VCF modulation works in log-frequency space; these convert
@@ -630,40 +619,14 @@ public:
       vcfCPS = std::max(vcfCPS, mMinCPS);
       float res = mVcfRes * (1.f - std::clamp((vcfCPS - 0.8f) * 5.f, 0.f, 1.f));
 
-      // --- Oversampled osc + VCF ---
-      // Run oscillator and filter together at the oversampled rate.
-      // 4th-order PolyBLEP + oversampling gives excellent alias rejection.
-      // Precompute audio taper curves (block-rate, constant across oversampled calls).
-      float subAT = Oscillators::AudioTaper(mDcoSub);
-      float noiseAT = (mDcoNoise > 0.f) ? Oscillators::AudioTaper(mDcoNoise) : 0.f;
-      float signal;
-      int os = mVCF.mOversample;
-      float osCps = cps / static_cast<float>(os);
-      float osVcfCps = vcfCPS / static_cast<float>(os);
-
-      if (os == 4)
-      {
-        bool sync = false;
-        float s2x[2], s4x[2];
-
-        s4x[0] = mVCF.ProcessDirect(mOsc.Process(osCps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync), osVcfCps, res);
-        s4x[1] = mVCF.ProcessDirect(mOsc.Process(osCps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync), osVcfCps, res);
-        s2x[0] = mVoiceDown2.process_sample(s4x);
-
-        s4x[0] = mVCF.ProcessDirect(mOsc.Process(osCps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync), osVcfCps, res);
-        s4x[1] = mVCF.ProcessDirect(mOsc.Process(osCps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync), osVcfCps, res);
-        s2x[1] = mVoiceDown2.process_sample(s4x);
-
-        signal = mVoiceDown1.process_sample(s2x);
-      }
-      else
-      {
-        bool sync = false;
-        float s2x[2];
-        s2x[0] = mVCF.ProcessDirect(mOsc.Process(osCps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync), osVcfCps, res);
-        s2x[1] = mVCF.ProcessDirect(mOsc.Process(osCps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync), osVcfCps, res);
-        signal = mVoiceDown1.process_sample(s2x);
-      }
+      // --- Oscillator (1x) + oversampled VCF ---
+      // Wavetable oscillator is bandlimited by construction, runs at base rate.
+      // VCF handles its own upsampling/downsampling internally.
+      float subAT = OscillatorsWT::AudioTaper(mDcoSub);
+      float noiseAT = (mDcoNoise > 0.f) ? OscillatorsWT::AudioTaper(mDcoNoise) : 0.f;
+      bool sync = false;
+      float oscOut = mOsc.Process(cps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync);
+      float signal = mVCF.Process(oscOut, vcfCPS, res);
 
       // --- VCA ---
       float vcaOut;

@@ -141,10 +141,47 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& /*e*/) override
     {
         if (!mParam) return;
-        mParam->beginChangeGesture();
-        mParam->setValueNotifyingHost(mParam->getDefaultValue());
-        mParam->endChangeGesture();
-        repaint();
+        if (mEditor) dismissEdit();
+        if (mTooltip) mTooltip->hide();
+
+        auto* parent = mTooltip ? mTooltip->getParentComponent() : getTopLevelComponent();
+        if (!parent) return;
+
+        mEditor = std::make_unique<juce::TextEditor>();
+        mEditor->setLookAndFeel(&getEditBoxLnF());
+        mEditor->setFont(juce::FontOptions(11.f));
+        mEditor->setColour(juce::TextEditor::backgroundColourId, juce::Colour(0, 0, 0));
+        mEditor->setColour(juce::TextEditor::textColourId, juce::Colour(255, 255, 255));
+        mEditor->setColour(juce::TextEditor::outlineColourId, juce::Colour(128, 128, 128));
+        mEditor->setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(128, 128, 128));
+        mEditor->setColour(juce::TextEditor::highlightColourId, juce::Colour(80, 80, 80));
+        mEditor->setJustification(juce::Justification::centred);
+
+        juce::String displayText = mParam->getCurrentValueAsText();
+        mEditor->setText(displayText, false);
+
+        auto srcBounds = parent->getLocalArea(getParentComponent(), getBounds());
+        juce::Font font{juce::FontOptions(11.f)};
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText(font, displayText, 0.f, 0.f);
+        int tw = std::max(50, juce::roundToInt(glyphs.getBoundingBox(0, -1, false).getWidth()) + 16);
+        int th = 16;
+        int tx = srcBounds.getCentreX() - tw / 2;
+        int ty = srcBounds.getBottom() + 2;
+        auto pb = parent->getLocalBounds();
+        tx = juce::jlimit(0, pb.getWidth() - tw, tx);
+        ty = juce::jmin(pb.getHeight() - th, ty);
+        mEditor->setBounds(tx, ty, tw, th);
+
+        parent->addAndMakeVisible(mEditor.get());
+        mEditor->grabKeyboardFocus();
+
+        int numEnd = findNumericEnd(displayText);
+        mEditor->setHighlightedRegion(juce::Range<int>(0, numEnd));
+
+        mEditor->onReturnKey = [this]() { commitEdit(); };
+        mEditor->onEscapeKey = [this]() { dismissEdit(); };
+        mEditor->onFocusLost = [this]() { dismissEdit(); };
     }
 
     void mouseUp(const juce::MouseEvent& e) override
@@ -178,6 +215,49 @@ public:
     }
 
 private:
+    void commitEdit()
+    {
+        if (!mEditor || !mParam) return;
+        juce::String raw = mEditor->getText().trim();
+        if (raw.isEmpty()) { dismissEdit(); return; }
+        float normalized = juce::jlimit(0.f, 1.f, mParam->getValueForText(raw));
+        mParam->beginChangeGesture();
+        mParam->setValueNotifyingHost(normalized);
+        mParam->endChangeGesture();
+        repaint();
+        dismissEdit();
+    }
+
+    void dismissEdit()
+    {
+        if (!mEditor) return;
+        auto editor = std::move(mEditor);
+        editor->setLookAndFeel(nullptr);
+        editor->onFocusLost = nullptr;
+        if (auto* parent = editor->getParentComponent())
+            parent->removeChildComponent(editor.get());
+    }
+
+    struct EditBoxLnF : juce::LookAndFeel_V4
+    {
+        void drawTextEditorOutline(juce::Graphics& g, int w, int h, juce::TextEditor&) override
+        {
+            g.setColour(juce::Colour(128, 128, 128));
+            g.drawRect(0, 0, w, h, 1);
+        }
+    };
+    static EditBoxLnF& getEditBoxLnF() { static EditBoxLnF lnf; return lnf; }
+
+    static int findNumericEnd(const juce::String& text)
+    {
+        int i = 0, len = text.length();
+        if (i < len && (text[i] == '+' || text[i] == '-')) i++;
+        bool hasDigit = false;
+        while (i < len && (juce::CharacterFunctions::isDigit(text[i]) || text[i] == '.'))
+        { if (text[i] != '.') hasDigit = true; i++; }
+        return hasDigit ? i : len;
+    }
+
     juce::RangedAudioParameter* mParam = nullptr;
     juce::Image mSpriteSheet;
     KR106Tooltip* mTooltip = nullptr;
@@ -188,4 +268,5 @@ private:
     float mAccumVal = 0.f;
     float mLastRawDelta = 0.f;
     bool mDragging = false;
+    std::unique_ptr<juce::TextEditor> mEditor;
 };

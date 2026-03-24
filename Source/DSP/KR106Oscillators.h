@@ -111,7 +111,8 @@ struct Oscillators {
   // found minimal curvature to fit. A small quadratic is retained for
   // subtle character. Values above ~0.1 produce audible even-harmonic
   // suppression that doesn't match the hardware measurements.
-  static constexpr float kSawCurve = 0.03f;
+//  static constexpr float kSawCurve = 0.03f;
+static constexpr float kSawCurve = 0.00f;
 
   // Saw reset blip: when TR5 discharges C7, the circuit rings at ~20 kHz
   // (LC parasitic resonance) with Q ≈ 10, decaying in ~280 µs.
@@ -205,7 +206,9 @@ struct Oscillators {
 
     // --- Sub: CD4013 flip-flop + polyBLEP ---
     // Half-frequency square wave, phase-locked to saw reset.
-    // PolyBLEP on every saw reset (both sub transitions), not just sync.
+    // fabsf corrects for alternating transition directions: the pre-transition
+    // window smooths toward the upcoming (opposite) step, and the post-transition
+    // window smooths the step that just happened. Both push toward the midpoint.
     float sub = mSubState ? -1.f : 1.f;
     sub -= fabsf(PolyBLEP(mPos, cps)) * (mSubState ? -1.f : 1.f);
 

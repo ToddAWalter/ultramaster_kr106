@@ -435,6 +435,19 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.4.2</span> Wavetable DCO, UI improvements</summary>
+      <ul>
+        <li>Replaced polyBLEP oscillators with bandlimited wavetable DCO, eliminates aliasing at all pitches</li>
+        <li>Oscillator runs at base sample rate; VCF handles its own oversampling internally</li>
+        <li>Remove output saturator for cleaner signal path (clip LED at &plusmn;1.0)</li>
+        <li>Master volume: squared audio taper for better low-end control, CC7 mapped</li>
+        <li>Double-click text editing on knobs (was sliders only)</li>
+        <li>Spectrum analyzer: 4096-point FFT for better low-frequency resolution</li>
+        <li>VCF frequency response scope: stop drawing line along bottom of display</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.4.1</span> Oversampling fixes, performance</summary>
       <ul>
         <li>Fix sub oscillator PolyBLEP sign (use absolute value for symmetric correction)</li>

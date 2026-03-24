@@ -43,7 +43,6 @@ private:
     KR106Keyboard* mKeyboard = nullptr;
     KR106PresetDisplay* mPresetDisplay = nullptr;
     KR106ClipLED* mClipLED = nullptr;
-    KR106ClipLED* mClipLED2 = nullptr;
     KR106Tooltip mTooltip;
 
     float mUIScale = 1.f;

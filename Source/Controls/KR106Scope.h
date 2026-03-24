@@ -409,7 +409,7 @@ private:
     void paintSpectrum(juce::Graphics& g, int w, int h,
                        juce::Colour dim, juce::Colour mid, juce::Colour bright)
     {
-        static constexpr int kFFTOrder = 10; // 1024-point FFT
+        static constexpr int kFFTOrder = 12; // 4096-point FFT (~10 Hz resolution)
         static constexpr int kFFTSize = 1 << kFFTOrder;
 
         // Fill FFT input from ring buffer (most recent samples)
@@ -472,8 +472,8 @@ private:
             }
         }
 
-        // Grid: horizontal lines every 18 dB (from 0dB downward)
-        for (float db = 0.f; db > kMinDb; db -= 18.f)
+        // Grid: horizontal lines every 18 dB (skip 0dB top line)
+        for (float db = -18.f; db > kMinDb; db -= 18.f)
         {
             if (db > kMaxDb) continue;
             float yf = (1.f - (db - kMinDb) / kDbRange) * (h - 1);
@@ -838,14 +838,19 @@ private:
 
         g.setColour(bright);
         int lastY = dbToY(evalDb(0));
+        bool lastClipped = (evalDb(0) <= kMinDb);
         for (int px = 0; px < w; px++)
         {
-            int y = dbToY(evalDb(px));
+            float db = evalDb(px);
+            bool clipped = (db <= kMinDb);
+            if (clipped && lastClipped) { lastY = dbToY(db); continue; }
+            int y = dbToY(db);
             int y1 = std::min(lastY, y);
             int y2 = std::max(lastY, y) + 1;
             g.fillRect(static_cast<float>(px), static_cast<float>(y1),
                        1.f, static_cast<float>(y2 - y1));
             lastY = y;
+            lastClipped = clipped;
         }
     }
 
