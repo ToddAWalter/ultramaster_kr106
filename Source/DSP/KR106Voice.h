@@ -394,7 +394,9 @@ public:
 
     // Pitch: 8.8 fixed-point semitones from gliding pitch (follows portamento)
     // mGlidePitch is in octaves relative to A440: MIDI note = glidePitch * 12 + 69
-    float glideMidi = mGlidePitch * 12.f + 69.f + mOctTranspose;
+    // The J106 firmware sees the raw MIDI note — the octave range switch only
+    // changes the DCO clock divider, not the note the VCF firmware tracks.
+    float glideMidi = mGlidePitch * 12.f + 69.f;
     uint16_t pitch88 = static_cast<uint16_t>(
         std::clamp(static_cast<int>(glideMidi * 256.f), 0, 127 << 8));
 
@@ -433,7 +435,7 @@ public:
 
       // Compute initial VCF DAC with the post-attack envelope so the
       // filter cutoff starts at the correct frequency on the first sample.
-      float glideMidi = mGlidePitch * 12.f + 69.f + mOctTranspose;
+      float glideMidi = mGlidePitch * 12.f + 69.f;
       uint16_t pitch88 = static_cast<uint16_t>(
           std::clamp(static_cast<int>(glideMidi * 256.f), 0, 127 << 8));
       bool envPol = (mVcfEnvInvert > 0);
@@ -595,7 +597,12 @@ public:
         float kbdRef    = mJ6ClassicVcf ? 32.703f  : 261.626f;
         float vcfFrq = logf(vcfBaseHz) + mVcfFreqOffset;
 
-        vcfFrq += logf(baseFreq / kbdRef) * mVcfKbd;
+        // J6: KBD tracking sees the pitch CV (octave switch + VCF bend) but
+        // not LFO, which modulates the DCO separately. The bender lever routes
+        // to VCF and DCO independently — KBD tracking is on the VCF side.
+        float kbdPitch = mOctTranspose / 12.f + mPitchOffset + mRawBend * mBendVcf;
+        float kbdFreq = baseFreq * powf(2.f, kbdPitch);
+        vcfFrq += logf(kbdFreq / kbdRef) * mVcfKbd;
         vcfFrq += env * mVcfEnv * envScale * float(mVcfEnvInvert);
         vcfFrq += lfo * mVcfLfo * kSemiToLogFreq;
         vcfFrq += 4.15888f * mRawBend * mBendVcf;
