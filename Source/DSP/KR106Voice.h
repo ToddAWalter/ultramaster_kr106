@@ -59,12 +59,14 @@ public:
   int mVcfEnvInvert = 1;       // 1 or -1
   int mVcaMode      = 0;       // 0=ADSR, 1=Gate
   float mVelocity   = 0.f;     // stored from Trigger()
-  T* mSyncOut       = nullptr; // scope sync output (pulse on oscillator phase reset)
-
-  // Shadow phase accumulator for scope sync — runs at un-modulated base
-  // frequency so the scope timebase is stable and LFO pitch mod is visible.
-  float mScopeSyncPhase = 0.f;
-  bool mScopeSyncSub    = false; // sub-oscillator toggle (sync every 2 cycles)
+  // Returns the scope sync frequency: base pitch with octave transpose,
+  // pitch offset, and bend, but without LFO (so scope timebase is stable).
+  float GetScopeSyncCPS() const
+  {
+    float nonLfoPitch = mOctTranspose / 12.f + mPitchOffset + mRawBend * mBendDco;
+    float freq = 440.f * powf(2.f, mGlidePitch + nonLfoPitch);
+    return freq / mSampleRate;
+  }
 
   // Portamento / glide
   float mGlidePitch     = -100.f; // current glide pitch (1V/oct); -100 = uninitialized
@@ -449,8 +451,6 @@ public:
       // VCF is NOT reset on note-on — matches real hardware where
       // the filter runs continuously (self-oscillation persists
       // between notes, frequency just shifts with keyboard tracking).
-      mScopeSyncPhase = 0.f;
-      mScopeSyncSub = false;
     }
   }
 
@@ -462,6 +462,11 @@ public:
     mSampleRate = static_cast<float>(sampleRate);
     mADSR.SetSampleRate(mSampleRate);
     mVCF.SetSampleRate(mSampleRate);
+    mVCF.Reset();
+    // Prime the VCF's polyphase resamplers by feeding silent samples.
+    // Without this, the first non-zero sample causes an upsampler transient (click).
+    for (int i = 0; i < 64; i++)
+      mVCF.Process(0.f, 0.01f, 0.f);
     mOsc.Init(mSampleRate);
 
     // Precomputed constants for VCF frequency calculation.
@@ -499,6 +504,9 @@ public:
     T* lfoBuffer = (nInputs > 0 && inputs[0]) ? inputs[0] : nullptr;
     // Raw LFO triangle (before onset envelope) for J106 integer VCF path (index 1)
     T* lfoRawBuffer = (nInputs > 1 && inputs[1]) ? inputs[1] : nullptr;
+    // Shared noise source (index 2)
+    T* noiseBuffer = (nInputs > 2 && inputs[2]) ? inputs[2] : nullptr;
+    float noiseAT = (noiseBuffer && mDcoNoise > 0.f) ? OscillatorsWT::AudioTaper(mDcoNoise) : 0.f;
 
     for (int i = startIdx; i < startIdx + nFrames; i++)
     {
@@ -574,21 +582,6 @@ public:
         continue;
       }
 
-      // Scope sync: shadow accumulator at base pitch (all mod except LFO)
-      if (mSyncOut)
-      {
-        float nonLfoPitch = mOctTranspose / 12.f + mPitchOffset + mRawBend * mBendDco;
-        float syncCps = baseFreq * powf(2.f, nonLfoPitch) / mSampleRate;
-        mScopeSyncPhase += syncCps;
-        if (mScopeSyncPhase >= 1.f)
-        {
-          mScopeSyncPhase -= 1.f;
-          mScopeSyncSub = !mScopeSyncSub;
-          if (mScopeSyncSub)
-            mSyncOut[i] = T(1);
-        }
-      }
-
       // --- VCF frequency calculation ---
       float vcfCPS;
       if (mADSR.mJ6Mode)
@@ -616,17 +609,17 @@ public:
         vcfCPS = vcfHz * mInvNyq;
       }
 
-      vcfCPS = std::max(vcfCPS, mMinCPS);
-      float res = mVcfRes * (1.f - std::clamp((vcfCPS - 0.8f) * 5.f, 0.f, 1.f));
-
       // --- Oscillator (1x) + oversampled VCF ---
       // Wavetable oscillator is bandlimited by construction, runs at base rate.
       // VCF handles its own upsampling/downsampling internally.
       float subAT = OscillatorsWT::AudioTaper(mDcoSub);
-      float noiseAT = (mDcoNoise > 0.f) ? OscillatorsWT::AudioTaper(mDcoNoise) : 0.f;
       bool sync = false;
-      float oscOut = mOsc.Process(cps, pw, mSawOn, mPulseOn, mSubOn, subAT, noiseAT, sync);
-      float signal = mVCF.Process(oscOut, vcfCPS, res);
+      float oscOut = mOsc.Process(cps, pw, mSawOn, mPulseOn, mSubOn, subAT, 0.f, sync);
+
+      // Noise mixed from shared source (single generator, matches hardware)
+      if (noiseAT > 0.f)
+        oscOut += static_cast<float>(noiseBuffer[i]) * noiseAT;
+      float signal = mVCF.Process(oscOut, vcfCPS, mVcfRes);
 
       // --- VCA ---
       float vcaOut;

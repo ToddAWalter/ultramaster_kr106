@@ -47,5 +47,10 @@ resources/106rom/
 # Website
 docs/website/makefile
 
+# VCF development variants
+Source/DSP/KR106VCFv*.h
+Source/DSP/KR106VCF_*.h
+Source/DSP/_KR106VCF.h
+
 # iPlug2
 gui/

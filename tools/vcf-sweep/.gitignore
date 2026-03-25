@@ -1,0 +1,8 @@
+vcf_sweep
+vcf_noise
+vcf_quick
+vcf_res_sweep
+vcf_thd
+vcf_peaks
+*.wav
+*.csv

@@ -103,14 +103,13 @@
   }
 
   .dl-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
+    display: inline-block;
     padding: 0.8rem 1.6rem;
     border-radius: 6px;
     text-decoration: none;
     font-weight: 600;
     font-size: 0.95rem;
+    text-align: center;
     transition: background 0.15s, transform 0.1s;
     border: 1px solid #444;
     background: #1e1e1e;
@@ -132,6 +131,13 @@
   .dl-btn.primary:hover {
     background: #3344dd;
     border-color: #3344dd;
+  }
+
+  .dl-btn small {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #999;
+    line-height: 1.4;
   }
 
   .dl-btn img {
@@ -342,16 +348,20 @@
 
   <div class="downloads" id="downloads">
     <a class="dl-btn" data-os="mac" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-macOS.zip">
-      macOS
+      macOS<br>
+      <small>10.15+ / Intel &amp; Apple Silicon</small>
     </a>
     <a class="dl-btn" data-os="win" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Windows.zip">
-      Windows
+      Windows<br>
+      <small>10+ / 64-bit</small>
     </a>
     <a class="dl-btn" data-os="linux" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux.zip">
-      Linux x86
+      Linux<br>
+      <small>Ubuntu 20.04+ / x86_64</small>
     </a>
     <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux-arm64.zip">
-      Linux arm64
+      Linux<br>
+      <small>Raspberry Pi OS / arm64</small>
     </a>
   <script>
     (function() {
@@ -364,8 +374,7 @@
     })();
   </script>
     <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106">
-      <img src="https://cdn.simpleicons.org/github/white" height="20">
-      Source Code (GPL)
+      Source Code (GPL3)
     </a>
   </div>
 
@@ -435,6 +444,23 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.4.3</span> VCF recalibration from hardware measurements</summary>
+      <ul>
+        <li>Improved self-oscillation: cleaner sine wave, more accurate pitch tracking, consistent volume across the frequency range</li>
+        <li>Self-oscillation and passthrough signal levels now matched</li>
+        <li>Resonance amplitude consistent between R=0.9 and R=1.0 (matches hardware)</li>
+        <li>Noise source shared across all voices (matches hardware single 2SC945 generator), with schematic-derived filtering</li>
+        <li>Fixed click when switching VCA gate/env mode mid-note</li>
+        <li>Fixed click on first note after voice initialization</li>
+        <li>Waveform scope: peak amplitude readout with clip indicator</li>
+        <li>Spectrum analyzer: higher resolution rendering</li>
+        <li>Fixed scope freezing on rapid note retrigger and low notes</li>
+        <li>MIDI program change messages now processed before notes</li>
+        <li>Debug logging auto-disabled in release builds</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.4.2</span> Wavetable DCO, UI improvements</summary>
       <ul>
         <li>Replaced polyBLEP oscillators with bandlimited wavetable DCO, eliminates aliasing at all pitches</li>

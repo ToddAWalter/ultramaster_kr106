@@ -287,6 +287,12 @@ int main(int argc, char* argv[])
         printf("  (peak amplitude: %.4f)", osc.amplitude);
     else if (effectivelyOscillating)
         printf("  (detected from FFT prominence: %.0f dB)", peakProminence);
+    double oscAmpDb = osc.amplitude > 1e-10 ? 20.0 * log10(osc.amplitude) : -200.0;
+    printf("\n  Osc amplitude:     %.4f (%.1f dB)", osc.amplitude, oscAmpDb);
+    if (osc.oscillating)
+        printf("\n  ZC freq:           %.1f Hz", osc.frequency);
+    if (peakFreq > 0)
+        printf("\n  FFT peak freq:     %.1f Hz", peakFreq);
     printf("\n  Target freq:       %.1f Hz  (frq=%.4f)\n", targetHz, frq);
     if (peakProminence > 15.0) {
         printf("  Res peak (%s):    %.1f Hz  (%+.1f dB, error: %+.1f cents)\n",

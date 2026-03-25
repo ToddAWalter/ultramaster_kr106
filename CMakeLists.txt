@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
-project(KR106 VERSION 2.4.2)
+project(KR106 VERSION 2.4.3)
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
 
 add_subdirectory(libs/JUCE)
 add_subdirectory(libs/clap-juce-extensions EXCLUDE_FROM_ALL)
 
 set(KR106_FORMATS AU VST3 LV2 Standalone)
+option(KR106_COPY_AFTER_BUILD "Copy plugins to system directories after build" ON)
 
 juce_add_plugin(KR106
     COMPANY_NAME "Kayrock"
@@ -21,7 +22,7 @@ juce_add_plugin(KR106
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/resources/img/icon_1024.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/resources/img/icon_1024.png"
     LV2URI "https://kayrock.org/kr106"
-    COPY_PLUGIN_AFTER_BUILD TRUE
+    COPY_PLUGIN_AFTER_BUILD ${KR106_COPY_AFTER_BUILD}
 )
 
 juce_add_binary_data(KR106BinaryData SOURCES

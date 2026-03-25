@@ -14,7 +14,7 @@ jobs:
           submodules: recursive
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DKR106_COPY_AFTER_BUILD=OFF -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DKR106_COPY_AFTER_BUILD=OFF
 
       - name: Build
         run: cmake --build build --config Release
@@ -113,7 +113,7 @@ jobs:
           submodules: recursive
 
       - name: Configure
-        run: cmake -B build -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+        run: cmake -B build -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_SYSTEM_VERSION=10.0 -DKR106_COPY_AFTER_BUILD=OFF
 
       - name: Build
         run: cmake --build build --config Release
@@ -163,7 +163,7 @@ jobs:
             mesa-common-dev libgl-dev
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DKR106_COPY_AFTER_BUILD=OFF
 
       - name: Build
         run: cmake --build build --config Release
@@ -216,7 +216,7 @@ jobs:
             mesa-common-dev libgl-dev
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DKR106_COPY_AFTER_BUILD=OFF
 
       - name: Build
         run: cmake --build build --config Release

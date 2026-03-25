@@ -1,2 +1,19 @@
+Original Ultramaster Group
+==========================
 Karl LaRocca <kayrock@gmail.com>
 David Mansfield <dmansfield@gmail.com>
+
+2026 JUCE Port & Rewrite
+===================
+Karl LaRocca
+
+THANKS TO
+=========
+ROM disassembly by Gordon Pearce
+
+Antialiasing oscillator beta testing by u/qpoxnap
+
+Filter OTA bandwidth modeling informed by:
+L. Köper, M. Holters, F. Esqueda, J.D. Parker,
+"A Virtual Analog Model of the EDP Wasp VCF,"
+Proc. 25th Int. Conf. Digital Audio Effects (DAFx 2022), Vienna.

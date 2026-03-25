@@ -11,7 +11,7 @@ A synthesizer plugin emulating the Roland Juno-106, built with [JUCE](https://ju
 BBD chorus emulation, arpeggiator, portamento/unison mode, and 211 factory presets.
 
 **Formats:** AU, VST3, LV2, Standalone
-**Platforms:** macOS (13+), Windows, Linux
+**Platforms:** macOS (10.15+), Windows, Linux
 
 **[Download latest release](https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest)**
 
@@ -59,6 +59,14 @@ For a release build:
 
 ```bash
 CONFIG=Release make build
+```
+
+**Packagers:** If the build fails trying to copy plugins to `~/.lv2/` or similar
+system directories, disable the post-build copy:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DKR106_COPY_AFTER_BUILD=OFF
+cmake --build build --config Release
 ```
 
 Run `make help` for all available targets.

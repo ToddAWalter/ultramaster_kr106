@@ -4,7 +4,12 @@
 #include "DSP/KR106_HPF.h"
 
 // Debug logging to ~/Library/Application Support/KR106/debug.log
-#define KR106_DEBUG 1
+// Automatically disabled in Release builds (NDEBUG is set by CMake).
+#ifdef NDEBUG
+  #define KR106_DEBUG 0
+#else
+  #define KR106_DEBUG 1
+#endif
 #if KR106_DEBUG
 static void dbgLog(const juce::String& msg)
 {
@@ -527,6 +532,9 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 {
   juce::ScopedNoDenormals noDenormals;
 
+  static bool firstBlock = true;
+  if (firstBlock) { dbgLog("processBlock FIRST CALL"); firstBlock = false; }
+
   int nFrames = buffer.getNumSamples();
   int nOutputs = std::min(getTotalNumOutputChannels(), 2);
 
@@ -631,13 +639,51 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                             std::memory_order_release);
   }
 
+  // --- Log all MIDI events ---
+  for (const auto meta : midiMessages)
+  {
+    auto msg = meta.getMessage();
+    auto raw = msg.getRawData();
+    int len = msg.getRawDataSize();
+    juce::String hex;
+    for (int b = 0; b < std::min(len, 8); b++)
+      hex += juce::String::toHexString(raw[b]).paddedLeft('0', 2) + " ";
+    dbgLog("MIDI pos=" + juce::String(meta.samplePosition) + " len=" + juce::String(len) + " " + hex.trim());
+  }
+
+  // --- Handle MIDI program changes first (before notes) ---
+  for (const auto meta : midiMessages)
+  {
+    auto msg = meta.getMessage();
+    if (msg.isProgramChange())
+    {
+      dbgLog("PC pgm=" + juce::String(msg.getProgramChangeNumber())
+           + " samplePos=" + juce::String(meta.samplePosition)
+           + " blockSize=" + juce::String(nFrames));
+      setCurrentProgram(msg.getProgramChangeNumber());
+      for (int i = 0; i < kNumParams; i++)
+      {
+        if (!mParams[i]) continue;
+        float cur = mParams[i]->getValue();
+        mLastParamValues[i] = cur;
+        float denorm = mParams[i]->convertFrom0to1(cur);
+        parameterChanged(i, denorm);
+      }
+    }
+  }
+
   // --- Decode host MIDI ---
   for (const auto meta : midiMessages)
   {
     auto msg = meta.getMessage();
+    if (msg.isProgramChange()) continue; // already handled above
 
     if (msg.isNoteOn())
     {
+      dbgLog("NoteOn note=" + juce::String(msg.getNoteNumber())
+           + " vel=" + juce::String(msg.getVelocity())
+           + " samplePos=" + juce::String(meta.samplePosition)
+           + " blockSize=" + juce::String(nFrames));
       mDSP.NoteOn(msg.getNoteNumber(), msg.getVelocity());
       mKeyboardHeld.set(msg.getNoteNumber());
     }
@@ -1078,6 +1124,8 @@ const juce::String KR106AudioProcessor::getProgramName(int index)
 
 void KR106AudioProcessor::setCurrentProgram(int index)
 {
+  dbgLog("setCurrentProgram index=" + juce::String(index));
+
   // Copy values out under lock
   float values[kNumParams] = {};
   {

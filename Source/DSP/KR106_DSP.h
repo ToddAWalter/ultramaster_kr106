@@ -24,6 +24,7 @@ enum EModulations
 {
   kModLFO = 0,
   kModLFORaw, // raw triangle waveform (before onset envelope), for J106 integer VCF
+  kModNoise,  // shared noise source (single generator, like real hardware)
   kNumModulations
 };
 
@@ -316,177 +317,11 @@ public:
     for (int c = 0; c < nOutputs; c++)
       memset(outputs[c], 0, nFrames * sizeof(T));
 
-#if 0 // Filter test: white noise, FRQ=[64], cutoff sweep at fixed res steps
-    {
-      static float testPhase = 0.f;
-      static int testStep = 0;        // 0..5 → res = 0.0, 0.2, 0.4, 0.6, 0.8, 1.0
-      static kr106::VCF testVCF;
-      static bool testVCFInit = false;
-      static uint32_t testNoiseSeed = 12345;
-      static constexpr int kNumSteps = 6;
-      static constexpr float kSweepSec = 2.f;
-
-      float sr = std::max(mSampleRate, 44100.f);
-      if (!testVCFInit) { testVCF.SetSampleRate(sr); testVCFInit = true; }
-      float phaseInc = 1.f / (kSweepSec * sr);
-      float res = testStep * 0.2f;
-
-      for (int s = 0; s < nFrames; s++)
-      {
-        testNoiseSeed = testNoiseSeed * 196314165u + 907633515u;
-        float noise = static_cast<float>(testNoiseSeed) / static_cast<float>(0xFFFFFFFFu) * 2.f - 1.f;
-
-        // Sweep cutoff 0→max over 2s at current fixed res
-        uint16_t dac = static_cast<uint16_t>(testPhase * 0x3F80);
-        float hz = kr106::dacToHz(dac);
-        float frq = hz / (sr * 0.5f);
-        float out = testVCF.Process(noise * 0.5f, frq, res);
-
-        for (int c = 0; c < nOutputs; c++)
-          outputs[c][s] = static_cast<T>(out);
-
-        testPhase += phaseInc;
-        if (testPhase >= 1.f)
-        {
-          testPhase -= 1.f;
-          testStep = (testStep + 1) % kNumSteps;
-        }
-      }
-      return;
-    }
-#endif
-
-    // --- Filter test mode (triggered by '0' key) ---
-    if (mFilterTestTrigger.exchange(false))
-    {
-      mFilterTestActive = true;
-      mTestPhase = 0.f;
-      mTestStep = 0;
-      mTestVCF.Reset();
-      mTestNoiseSeed = 12345;
-    }
-
-    if (mFilterTestActive)
-    {
-      float sr = std::max(mSampleRate, 44100.f);
-      float phaseInc = 1.f / (kTestNoteSec * sr);
-
-      for (int s = 0; s < nFrames; s++)
-      {
-        float out = 0.f;
-        bool inTone = (mTestPhase * kTestNoteSec) < kTestToneSec;
-
-        if (inTone)
-        {
-          float hz = TestStepHz(mTestStep);
-          float res = TestStepRes(mTestStep);
-          float frq = hz / (sr * 0.5f);
-
-          if (TestStepNoise(mTestStep))
-          {
-            mTestNoiseSeed = mTestNoiseSeed * 196314165u + 907633515u;
-            float noise = static_cast<float>(mTestNoiseSeed) / static_cast<float>(0xFFFFFFFFu) * 2.f - 1.f;
-            out = mTestVCF.Process(noise * 0.5f, frq, res);
-          }
-          else
-          {
-            out = mTestVCF.Process(0.f, frq, res);
-          }
-        }
-        else
-        {
-          out = mTestVCF.Process(0.f, 0.01f, 0.f);
-          out = 0.f;
-        }
-
-        for (int c = 0; c < nOutputs; c++)
-          outputs[c][s] = static_cast<T>(out);
-
-        mTestPhase += phaseInc;
-        if (mTestPhase >= 1.f)
-        {
-          mTestPhase -= 1.f;
-          mTestVCF.Reset();
-          mTestStep++;
-          if (mTestStep >= kTestTotalSteps)
-          {
-            mFilterTestActive = false;
-            break;
-          }
-        }
-      }
-      if (mFilterTestActive) return;
-    }
-
-    // --- Oscillator test mode (triggered by '9' key) ---
-    if (mOscTestTrigger.exchange(false))
-    {
-      mOscTestActive = true;
-      mOscTestPhase = 0.f;
-      mOscTestStep = 0;
-      mOscTestBLEP.Reset();
-      mOscTestBLEP.Init(mSampleRate);
-      mOscTestOsc.Reset();
-      mOscTestOsc.Init(mSampleRate);
-      mOscTestOsc.SetTables(&mSawTables);
-    }
-
-    if (mOscTestActive)
-    {
-      float sr = std::max(mSampleRate, 44100.f);
-      float phaseInc = 1.f / (kOscTestNoteSec * sr);
-
-      // C1 = 32.7 Hz, pw = 50%, raw at 1x sample rate
-      float cps = 32.7f / sr;
-      float subAT = kr106::OscillatorsWT::AudioTaper(1.f);
-
-      for (int s = 0; s < nFrames; s++)
-      {
-        float out = 0.f;
-        bool inTone = (mOscTestPhase * kOscTestNoteSec) < kOscTestToneSec;
-
-        if (inTone && mOscTestStep < kOscTestTotalSteps)
-        {
-          int waveIdx = mOscTestStep % 3; // 0=saw, 1=pulse, 2=sub
-          bool sawOn   = (waveIdx == 0);
-          bool pulseOn = (waveIdx == 1);
-          bool subOn   = (waveIdx == 2);
-          bool useBLEP = (mOscTestStep < 3);
-          bool sync = false;
-
-          if (useBLEP)
-            out = mOscTestBLEP.Process(cps, 0.5f, sawOn, pulseOn, subOn, subAT, 0.f, sync);
-          else
-            out = mOscTestOsc.Process(cps, 0.5f, sawOn, pulseOn, subOn, subAT, 0.f, sync);
-        }
-
-        for (int c = 0; c < nOutputs; c++)
-          outputs[c][s] = static_cast<T>(out);
-
-        mOscTestPhase += phaseInc;
-        if (mOscTestPhase >= 1.f)
-        {
-          mOscTestPhase -= 1.f;
-          mOscTestStep++;
-          mOscTestBLEP.Reset();
-          mOscTestBLEP.Init(mSampleRate);
-          mOscTestOsc.Reset();
-          mOscTestOsc.Init(mSampleRate);
-          mOscTestOsc.SetTables(&mSawTables);
-          if (mOscTestStep >= kOscTestTotalSteps)
-          {
-            mOscTestActive = false;
-            break;
-          }
-        }
-      }
-      if (mOscTestActive) return;
-    }
-
     if (static_cast<int>(mLFOBuffer.size()) < nFrames)
     {
       mLFOBuffer.resize(nFrames, T(0));
       mLFORawBuffer.resize(nFrames, T(0));
+      mNoiseBuffer.resize(nFrames, T(0));
       mSyncBuffer.resize(nFrames, T(0));
       mModulations.resize(kNumModulations, nullptr);
     }
@@ -497,8 +332,6 @@ public:
     int64_t oldestAge = INT64_MAX;
     for (int i = 0; i < nv; i++)
       if (mVoices[i]->GetBusy() && mVoiceAge[i] < oldestAge) { oldestAge = mVoiceAge[i]; scopeVoice = i; }
-    for (int i = 0; i < nv; i++)
-      mVoices[i]->mSyncOut = (i == scopeVoice) ? mSyncBuffer.data() : nullptr;
 
     bool anyActive = false;
     ForEachVoice([&](kr106::Voice<T>& v) { anyActive |= v.GetBusy(); });
@@ -508,10 +341,33 @@ public:
     {
       mLFOBuffer[s] = static_cast<T>(mLFO.Process());
       mLFORawBuffer[s] = static_cast<T>(mLFO.mLastTri);
+
+      // FIXME, make higher frq redcording of Juno 6 and analyze
+      // Shared noise: 4-sample CLT white noise + TPT 1-pole LP + TPT 1-pole HP
+      float g = 0.f;
+      for (int j = 0; j < 4; j++) {
+          mNoiseSeed = mNoiseSeed * 196314165u + 907633515u;
+          g += 2.f * mNoiseSeed / static_cast<float>(0xFFFFFFFFu) - 1.f;
+      }
+      float white = g * 0.5f;
+      
+      // LPF ~15.4 kHz (C9/R65 in BA662 feedback)
+      float vLP = (white - mNoiseLPState) * mNoiseLPG / (1.f + mNoiseLPG);
+      float lp = mNoiseLPState + vLP;
+      mNoiseLPState = lp + vLP;
+      
+      // HPF ~159 Hz (C10/R70 output coupling)
+      float vHP = (lp - mNoiseHPState) * mNoiseHPG / (1.f + mNoiseHPG);
+      float hpLP = mNoiseHPState + vHP;
+      mNoiseHPState = hpLP + vHP;
+      float noise = lp - hpLP;  // HP = input - LP
+      
+      mNoiseBuffer[s] = static_cast<T>(noise);
     }
 
     mModulations[kModLFO]    = mLFOBuffer.data();
     mModulations[kModLFORaw] = mLFORawBuffer.data();
+    mModulations[kModNoise]  = mNoiseBuffer.data();
 
     mArp.Process(nFrames,
       [this](int note, int offset) { SendToSynth(note, true,  127, offset); },
@@ -522,6 +378,37 @@ public:
       if (!v->GetBusy()) continue;
       v->mLfoEnvAmp = mLFO.mAmp; // pass LFO onset envelope for J106 integer VCF
       v->ProcessSamplesAccumulating(mModulations.data(), outputs, kNumModulations, nOutputs, 0, nFrames);
+    }
+
+    // Scope sync: single accumulator running at the oldest voice's base
+    // pitch (without LFO). Pulses every 2 cycles (sub-oscillator period)
+    // so the display shows one full sub cycle. For very low frequencies
+    // where 2 cycles won't fit in the scope ring buffer, pulse every cycle.
+    if (scopeVoice >= 0)
+    {
+      float syncCps = mVoices[scopeVoice]->GetScopeSyncCPS();
+      // 2 cycles fit if period*2 < ring size (with margin for the scope
+      // to find both pulses within its available samples).
+      // Scope ring is 4096 samples; need two sync pulses to fit with margin.
+      bool useSub = syncCps > 0.f && (2.f / syncCps) < 3200.f;
+      for (int s = 0; s < nFrames; s++)
+      {
+        mScopeSyncPhase += syncCps;
+        if (mScopeSyncPhase >= 1.f)
+        {
+          mScopeSyncPhase -= 1.f;
+          if (useSub)
+          {
+            mScopeSyncSub = !mScopeSyncSub;
+            if (mScopeSyncSub)
+              mSyncBuffer[s] = T(1);
+          }
+          else
+          {
+            mSyncBuffer[s] = T(1);
+          }
+        }
+      }
     }
 
     for (int s = 0; s < nFrames; s++)
@@ -559,14 +446,19 @@ public:
     mUnisonNote = -1;
     mUnisonStack.clear();
     mRoundRobinNext = 0;
-    mTestVCF.SetSampleRate(mSampleRate);
     mHPF.SetSampleRate(mSampleRate);
     mHPF.Init();
     mHPF.SetMode(1);
     mChorus.Init(mSampleRate);
     mArp.SetSampleRate(mSampleRate);
+    // Shared noise source filters (from schematic)
+    mNoiseLPG = tanf(static_cast<float>(M_PI) * 15400.f / mSampleRate);  // C9/R65
+    mNoiseHPG = tanf(static_cast<float>(M_PI) * 159.f / mSampleRate);    // C10/R70
+    mNoiseLPState = 0.f;
+    mNoiseHPState = 0.f;
     mLFOBuffer.resize(blockSize);
     mLFORawBuffer.resize(blockSize);
+    mNoiseBuffer.resize(blockSize);
     mSyncBuffer.resize(blockSize);
     mModulations.resize(kNumModulations);
   }
@@ -654,63 +546,20 @@ public:
   float mSliderBenderVcf = 0.f;
   float mSliderHpf = 1.f; // default = Flat (mode 1)
 
-  // --- Filter test mode (toggled by '0' key) ---
-  std::atomic<bool> mFilterTestTrigger{false}; // UI thread sets true to start
-  bool mFilterTestActive = false;
-
-  kr106::VCF mTestVCF;
-  uint32_t mTestNoiseSeed = 12345;
-  float mTestPhase = 0.f;   // position within current note [0,1)
-  int mTestStep = 0;        // which step in the sequence
-
-  // --- Oscillator test mode (toggled by '9' key) ---
-  // Renders saw, pulse, sub individually through oversampled VCF (wide open),
-  // no HPF or chorus. For recording raw oscillator output.
-  std::atomic<bool> mOscTestTrigger{false};
-  bool mOscTestActive = false;
-  kr106::Oscillators mOscTestBLEP;
-  kr106::OscillatorsWT mOscTestOsc;
-  kr106::VCF mOscTestVCF;
-  kr106::Downsampler2x mOscTestDown1, mOscTestDown2;
-  float mOscTestPhase = 0.f;
-  int mOscTestStep = 0; // 0-2=polyBLEP saw/pulse/sub, 3-5=wavetable saw/pulse/sub
-  static constexpr int kOscTestTotalSteps = 6;
-  static constexpr float kOscTestToneSec = 2.f;
-  static constexpr float kOscTestSilenceSec = 0.5f;
-  static constexpr float kOscTestNoteSec = kOscTestToneSec + kOscTestSilenceSec;
-
-  // Sequence layout:
-  //   Step 0:   self-osc 200Hz R=1.0, 1.75s tone + 0.25s silence
-  //   Steps 1–36: for each R in {0.0, 0.2, 0.4, 0.6, 0.8, 1.0} (6 groups of 6):
-  //     noise through filter at 200, 400, 800, 1600, 3200, 6400 Hz
-  //     1.75s tone + 0.25s silence each
-  //   Total steps: 1 + 6*6 = 37
-  static constexpr int kTestTotalSteps = 37;
-  static constexpr float kTestToneSec = 1.75f;
-  static constexpr float kTestSilenceSec = 0.25f;
-  static constexpr float kTestNoteSec = kTestToneSec + kTestSilenceSec;
-  static constexpr float kTestFreqs[6] = {200.f, 400.f, 800.f, 1600.f, 3200.f, 6400.f};
-
-  float TestStepRes(int step) const
-  {
-    if (step == 0) return 1.f;
-    return static_cast<float>((step - 1) / 6) * 0.2f;
-  }
-
-  float TestStepHz(int step) const
-  {
-    if (step == 0) return 200.f;
-    return kTestFreqs[(step - 1) % 6];
-  }
-
-  bool TestStepNoise(int step) const { return step > 0; }
-
   std::bitset<128> mHeldNotes;
   std::bitset<128> mKeysDown;
   bool mSuppressHoldRelease = false;
   std::vector<T> mLFOBuffer;
   std::vector<T> mLFORawBuffer; // raw triangle (before onset envelope)
+  std::vector<T> mNoiseBuffer;  // shared noise source (single generator for all voices)
+  uint32_t mNoiseSeed = 22222;
+  float mNoiseLPState = 0.f;
+  float mNoiseLPG = 0.f;        // TPT coefficient for noise LP (C9/R65, 15.4 kHz)
+  float mNoiseHPState = 0.f;
+  float mNoiseHPG = 0.f;        // TPT coefficient for noise HP (C10/R70, 159 Hz)
   std::vector<T> mSyncBuffer;
+  float mScopeSyncPhase = 0.f;
+  bool mScopeSyncSub = false;
   std::vector<T*> mModulations;
 
   void SetKeyTranspose(int semitones)

@@ -61,11 +61,8 @@ struct Oscillators {
   float mSawGain = 1.f;   // crossfade gains for pop-free switching
   float mPulseGain = 1.f;
   float mSubGain = 0.f;
-  uint32_t mRandSeed = 22222;
   float mBlipEnv = 0.f;      // capacitor discharge transient envelope
   float mSubLPState = 0.f;   // sub oscillator passive LP state
-  float mNoiseLPState = 0.f; // noise spectral tilt LP state (TPT integrator)
-  float mNoiseLPG = 0.f;    // TPT coefficient for noise LP (set by Init)
   float mSwitchRamp = kSwitchRamp; // rate-corrected waveform switch ramp (set by Init)
 
   // Pulse duty cycle: J6 vs J106
@@ -126,13 +123,7 @@ static constexpr float kSawCurve = 0.00f;
   static constexpr float kBlipAmp = 0.15f;
   static constexpr float kBlipDecay = 0.5f;
 
-  // Noise filter cutoff: best-fit to Juno-6 hardware noise spectrum.
-  // Mixer resistor network + analog noise source bandwidth.
-  static constexpr float kNoiseLPHz = 8000.f;
-
   void Init(float sampleRate) {
-    float fc = std::min(kNoiseLPHz, sampleRate * 0.45f);
-    mNoiseLPG = tanf(static_cast<float>(M_PI) * fc / sampleRate);
     // ~1.45ms time constant (matches original 1/64 at 44.1 kHz)
     mSwitchRamp = 1.f - expf(-1.f / (0.00145f * sampleRate));
     Reset();
@@ -143,7 +134,9 @@ static constexpr float kSawCurve = 0.00f;
     mSubState = false;
     mBlipEnv = 0.f;
     mSubLPState = 0.f;
-    mNoiseLPState = 0.f;
+    // Don't reset mSawGain/mPulseGain/mSubGain — they ramp via mSwitchRamp
+    // and resetting to 0 on every new voice causes audible fade-in artifacts
+    // during rapid retriggering.
   }
 
   // Process one sample.
@@ -227,24 +220,9 @@ static constexpr float kSawCurve = 0.00f;
     float out = saw * kSawAmp * mSawGain + pulse * kPulseAmp * mPulseGain +
                 sub * kSubAmp * subLevel * mSubGain;
 
-    // --- Noise: 2SC945 NZ avalanche source ---
-    if (noiseAmp > 0.f) {
-      // Sum of 4 uniform samples → approximate Gaussian via CLT.
-      float g = 0.f;
-      for (int i = 0; i < 4; i++) {
-        mRandSeed = mRandSeed * 196314165 + 907633515;
-        g += 2.f * mRandSeed / static_cast<float>(0xFFFFFFFF) - 1.f;
-      }
-      float white = g * 0.5f;
-
-      // Mixer resistor network rolls off highs (~8 kHz RC lowpass).
-      // TPT 1-pole for sample-rate-independent analog-matched response.
-      float v = (white - mNoiseLPState) * mNoiseLPG / (1.f + mNoiseLPG);
-      float noise = mNoiseLPState + v;
-      mNoiseLPState = noise + v;
-
-      out += noise * noiseAmp;
-    }
+    // Noise is now mixed at the voice level from a shared source
+    // (single generator for all voices, matching real hardware).
+    (void)noiseAmp;
 
     return out;
   }

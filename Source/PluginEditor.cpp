@@ -430,7 +430,6 @@ bool KR106Editor::keyPressed(const juce::KeyPress& key)
         return true;
     }
 
-    // '0': oscillator test mode (saw/pulse/sub through oversampled VCF, no HPF/chorus)
     // QWERTY note keys
     int note = qwertyToNote(code);
     if (note >= 0 && note <= 127)

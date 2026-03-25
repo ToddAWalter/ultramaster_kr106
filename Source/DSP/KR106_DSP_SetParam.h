@@ -190,7 +190,20 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       });
       break;
     case kVcaMode:
-      ForEachVoice([value](kr106::Voice<T>& v) { v.mVcaMode = static_cast<int>(value); });
+      ForEachVoice([value](kr106::Voice<T>& v) {
+        int newMode = static_cast<int>(value);
+        if (newMode != v.mVcaMode && v.GetBusy())
+        {
+          // Snap envelope values to prevent click when switching mid-note.
+          // Gate→Env: copy gateEnv level to ADSR env so it doesn't drop to zero.
+          // Env→Gate: copy ADSR env to gateEnv so it doesn't jump to full.
+          if (newMode == 0) // switching to env mode
+            v.mADSR.mEnv = v.mADSR.mGateEnv;
+          else // switching to gate mode
+            v.mADSR.mGateEnv = v.mADSR.mEnv;
+        }
+        v.mVcaMode = newMode;
+      });
       break;
     case kAdsrMode: {
       mAdsrMode = static_cast<int>(value);

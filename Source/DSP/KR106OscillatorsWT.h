@@ -109,9 +109,6 @@ struct OscillatorsWT {
   float mSawGain = 1.f;   // crossfade gains for pop-free switching
   float mPulseGain = 1.f;
   float mSubGain = 0.f;
-  uint32_t mRandSeed = 22222;
-  float mNoiseLPState = 0.f;
-  float mNoiseLPG = 0.f;
   float mSwitchRamp = kSwitchRamp;
 
   bool mPulseInvert = false; // J106: inverted duty cycle (see Oscillators.h)
@@ -120,15 +117,12 @@ struct OscillatorsWT {
   // Applied as phase warp before table lookup. At 0.03 the spectral
   // effect is below -100 dB so it doesn't meaningfully affect aliasing.
   static constexpr float kSawCurve = 0.03f;
-  static constexpr float kNoiseLPHz = 8000.f;
 
   const SawTables* mTables = nullptr;
 
   void SetTables(const SawTables* tables) { mTables = tables; }
 
   void Init(float sampleRate) {
-    float fc = std::min(kNoiseLPHz, sampleRate * 0.45f);
-    mNoiseLPG = tanf(static_cast<float>(M_PI) * fc / sampleRate);
     mSwitchRamp = 1.f - expf(-1.f / (0.00145f * sampleRate));
     Reset();
   }
@@ -136,7 +130,9 @@ struct OscillatorsWT {
   void Reset() {
     mPos = 0.f;
     mSubState = false;
-    mNoiseLPState = 0.f;
+    // Don't reset mSawGain/mPulseGain/mSubGain — they ramp via mSwitchRamp
+    // and resetting to 0 on every new voice causes audible fade-in artifacts
+    // during rapid retriggering.
   }
 
   // Audio taper: 50K pot emulation (exponential curve, same for sub + noise).
@@ -216,21 +212,10 @@ struct OscillatorsWT {
     float out = saw * kSawAmp * mSawGain + pulse * kPulseAmp * mPulseGain +
                 sub * kSubAmp * subLevel * mSubGain;
 
-    // --- Noise: 2SC945 NZ avalanche source ---
-    if (noiseAmp > 0.f) {
-      float g = 0.f;
-      for (int i = 0; i < 4; i++) {
-        mRandSeed = mRandSeed * 196314165 + 907633515;
-        g += 2.f * mRandSeed / static_cast<float>(0xFFFFFFFF) - 1.f;
-      }
-      float white = g * 0.5f;
-
-      float v = (white - mNoiseLPState) * mNoiseLPG / (1.f + mNoiseLPG);
-      float noise = mNoiseLPState + v;
-      mNoiseLPState = noise + v;
-
-      out += noise * noiseAmp;
-    }
+    // Noise is now mixed at the voice level from a shared source
+    // (single generator for all voices, matching real hardware).
+    // noiseAmp parameter is retained for API compatibility but ignored here.
+    (void)noiseAmp;
 
     return out;
   }

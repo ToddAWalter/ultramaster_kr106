@@ -384,6 +384,7 @@ private:
             }
 
             // L channel (bright, on top)
+            float peakL = 0.f;
             g.setColour(bright);
             int lastY = static_cast<int>((mDisplay[0] / scale) * -v2 + v2);
             for (int i = 0; i < w; i++)
@@ -394,6 +395,7 @@ private:
                 if (s0 >= mDisplayLen - 1) { s0 = mDisplayLen - 2; frac = 1.f; }
 
                 float sample = mDisplay[s0] + frac * (mDisplay[s0 + 1] - mDisplay[s0]);
+                peakL = std::max(peakL, fabsf(sample));
                 int y = static_cast<int>((sample / scale) * -v2 + v2);
 
                 int y1 = std::min(lastY, y);
@@ -402,6 +404,19 @@ private:
                            1.f, static_cast<float>(y2 - y1));
                 lastY = y;
             }
+
+            // Peak amplitude readout (bottom-right corner)
+            float peakDb = peakL > 1e-10f ? 20.f * log10f(peakL) : -200.f;
+            if (peakDb >= 0.f)
+                mClipHoldFrames = 30; // ~1 second at 30 Hz refresh
+            else if (mClipHoldFrames > 0)
+                mClipHoldFrames--;
+            auto font = juce::Font(juce::FontOptions()
+                .withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(10.f);
+            g.setFont(font);
+            g.setColour(mClipHoldFrames > 0 ? bright : dim);
+            g.drawText(juce::String(peakDb, 1) + " dB",
+                       2, h - 14, w - 4, 12, juce::Justification::bottomRight);
         }
     }
 
@@ -483,31 +498,26 @@ private:
 
         if (available < 64) return; // not enough data
 
-        // Draw spectrum as connected line
-        auto specY = [&](int px) -> int {
-            float logF = logMin + static_cast<float>(px) / (w - 1) * logRange;
+        // Draw spectrum as thin path (sub-pixel resolution)
+        auto specYf = [&](float px) -> float {
+            float logF = logMin + px / (w - 1) * logRange;
             float freq = powf(10.f, logF);
             float binF = freq / nyquist * numBins;
             int b0 = std::clamp(static_cast<int>(binF), 0, numBins - 2);
             float frac = binF - b0;
             float db = magnitudes[b0] + frac * (magnitudes[b0 + 1] - magnitudes[b0]);
             db = std::clamp(db, kMinDb, kMaxDb);
-            return static_cast<int>(std::round((1.f - (db - kMinDb) / kDbRange) * (h - 1)));
+            return (1.f - (db - kMinDb) / kDbRange) * (h - 1);
         };
 
+        juce::Path specPath;
+        float step = 0.5f; // half-pixel steps for smoother curves
+        specPath.startNewSubPath(0.f, specYf(0.f));
+        for (float px = step; px < w; px += step)
+            specPath.lineTo(px, specYf(px));
+
         g.setColour(bright);
-        int lastY = specY(0);
-        int floor = h - 1;
-        for (int px = 0; px < w; px++)
-        {
-            int y = specY(px);
-            if (y >= floor && lastY >= floor) { lastY = y; continue; }
-            int y1 = std::min(lastY, y);
-            int y2 = std::max(lastY, y) + 1;
-            g.fillRect(static_cast<float>(px), static_cast<float>(y1),
-                       1.f, static_cast<float>(y2 - y1));
-            lastY = y;
-        }
+        g.strokePath(specPath, juce::PathStrokeType(0.75f));
     }
 
     // ---- ADSR envelope display (split view) ----
@@ -767,7 +777,6 @@ private:
         // Clamp max k
         k = std::min(k, 6.6f);
 
-        // Apply pole-frequency compensation (same as DSP applies to g)
         fc *= kr106::VCF::FreqCompensation(k);
 
         // Display range
@@ -1188,6 +1197,9 @@ private:
     float mDisplayR[RING_SIZE] = {};
     int mDisplayLen = 0;
     bool mHasData = false;
+
+    // Clip indicator hold (bright green for ~1 second after clipping)
+    int mClipHoldFrames = 0;
 
     // About screen beam trace state
     struct AboutPixel { int16_t x, y; };

@@ -5,6 +5,15 @@
 #include <cstring>
 #include <cstdint>
 
+// BA662 feedback architecture: the hardware attenuates the LP4 output
+// 67:1 (R3 100K / R1 1.5K) before the differential pair tanh, placing
+// the tanh argument at ~0.26 during self-oscillation — barely nonlinear.
+// A single memoryless scaled tanh (kFbScale=4.2) replaces the previous
+// envelope-based amplitude control. Harmonic purity (H3 ≈ -48 dB),
+// flat amplitude across frequency and resonance, pitch accuracy (±3 cents),
+// and saw/oscillation level matching all fall out of the weak-drive
+// physics rather than requiring per-parameter tuning.
+
 namespace kr106 {
 
 // ============================================================
@@ -99,8 +108,6 @@ struct VCF
   uint32_t mNoiseSeed = 123456789u; // thermal noise PRNG state
   float mInputEnv = 0.f;           // peak envelope follower for noise suppression
   float mEnvDecay = 0.999f;        // per-sample decay for mInputEnv (22ms time constant)
-  float mFrqRef = 200.f / 176400.f; // normalized reference freq for resonance rolloff
-  float mDiffEnv = 0.f;  // smoothed stage-0 diff envelope
   float mSampleRate = 44100.f;     // cached for SetOversample()
 
   // Two cascaded 2x polyphase stages (used as 1+1 for 4x, or just 1 for 2x).
@@ -133,7 +140,6 @@ struct VCF
   void SetSampleRate(float sampleRate)
   {
     mSampleRate = sampleRate;
-    mFrqRef = 200.f / (sampleRate * static_cast<float>(mOversample));
     mEnvDecay = expf(-1.f / (0.022f * sampleRate * static_cast<float>(mOversample)));
   }
 
@@ -141,9 +147,8 @@ struct VCF
   {
     int prev = mOversample;
     mOversample = (factor == 2) ? 2 : 4;
-    mFrqRef = 200.f / (mSampleRate * static_cast<float>(mOversample));
     mEnvDecay = expf(-1.f / (0.022f * mSampleRate * static_cast<float>(mOversample)));
-    // Don't reset filter state (mS, mDiffEnv) — preserve pitch continuity.
+    // Don't reset filter state (mS) — preserve pitch continuity.
     // Only clear stage-2 resamplers when switching to 4x, since they were
     // idle during 2x and may contain stale data.
     if (mOversample == 4 && prev == 2)
@@ -153,10 +158,11 @@ struct VCF
     }
   }
 
-  // OTA saturation on the feedback path (Padé tanh approximant).
-  // Models the IR3109's resonance feedback re-entering through an OTA
-  // differential pair: tanh(V_diff / 2V_T). This is what limits
-  // resonance amplitude and gives the filter its character.
+  // OTA differential-pair tanh (Padé approximant of tanh(x)).
+  // Used in two places: (1) per-stage IR3109 OTA saturation in NLStage,
+  // scaled by kOTAScale, and (2) the BA662 feedback path, scaled by
+  // kFbScale to model the R3(100K)/R1(1.5K) voltage divider that
+  // attenuates the LP4 output before the BA662 differential pair.
   static float OTASat(float x)
   {
     if (x > 3.f) return 1.f;
@@ -191,13 +197,16 @@ struct VCF
   // kMax > 4.0 to compensate for tanh stage saturation absorbing feedback
   // energy (linear k=4 would self-oscillate, but our nonlinear stages need
   // ~5.0 to sustain oscillation). Gives 3-7 dB peaks at moderate settings.
-  // Gain scaled up ~3.5x from the original calibration to compensate for
-  // the frequency-dependent resonance attenuation (Fix 3) which reduces
-  // effective k across the spectrum. kNorm raised from 0.811 to 0.9f.
+  //
+  // Hardware self-oscillation measurements (Juno-6 SN#193284, March 2026)
+  // show flat amplitude (±0.5 dB) across 112 Hz–14 kHz at res=1.0 and
+  // res=0.9. No frequency-dependent k correction is needed. The BA662
+  // feedback tanh (weakly driven via the 100K:1.5K voltage divider)
+  // stabilizes the limit cycle amplitude inherently.
   static float ResK_J6(float res)
   {
     static constexpr float kShape = 2.128f;
-    static constexpr float kNorm = 0.9f; // v5: max k ≈ 6.6
+    static constexpr float kNorm = 0.811f;
     return kNorm * (expf(kShape * res) - 1.f);
   }
 
@@ -215,10 +224,12 @@ struct VCF
   //   1. Cascade droop: 4 identical poles in series place the -3dB point
   //      at 0.435× the individual pole frequency (k=0). Well-known from
   //      Zavalishin's "Art of VA Filter Design" — needs ~1.96× boost.
+  //
   //   2. OTASat compression: at high k, the per-stage tanh nonlinearity
-  //      reduces effective integrator gain, pulling the resonance peak
-  //      flat. This is amplitude-dependent but approximately constant
-  //      for a given k (the limit cycle amplitude is set by the tanh).
+  //      reduces effective integrator gain (describing function gain < 1),
+  //      pulling the cutoff frequency below target. The compression is
+  //      amplitude-dependent but approximately constant for a given k
+  //      (the limit cycle amplitude is set by the tanh).
   //
   // Applied to g (post-warp) rather than frq (pre-warp) so the tan()
   // bilinear transform sees the true frequency. This makes the
@@ -237,38 +248,33 @@ struct VCF
       return std::max((1.96f + 1.06f * k) / (1.f + 2.16f * k), 1.f);
   }
 
+  static constexpr float kOTAScale = 0.35f;
+
   // Nonlinear one-pole OTA-C stage: solves y = s + g*tanh(x - y)
   // via one Newton-Raphson iteration from the linear TPT estimate.
   static float NLStage(float& s, float x, float g, float g1)
   {
-    // Linear estimate (exact if tanh were linear)
-    float y = s + g1 * (x - s);
-    // One NR iteration: f(y) = y - s - g*tanh(x-y), f'(y) = 1 + g*sech²(x-y)
-    float diff = x - y;
-    float t = OTASat(diff);
-    float f = y - s - g * t;
-    float df = 1.f + g * OTASatDeriv(diff);
-    y -= f / df;
-    // Trapezoidal state update
-    s = 2.f * y - s;
-    return y;
+      float y = s + g1 * (x - s);
+      float diff = x - y;
+      float sd = diff * kOTAScale;
+      float t = OTASat(sd) / kOTAScale;
+      float f = y - s - g * t;
+      float df = 1.f + g * OTASatDeriv(sd);
+      y -= f / df;
+      s = 2.f * y - s;
+      return y;
   }
 
   // frq: normalized cutoff [0, ~0.9] where 1.0 = Nyquist (base rate)
   // res: resonance amount [0, 1]
   float Process(float input, float frq, float res)
   {
+    frq = std::min(frq, 0.95f);
+   
     if (mOversample == 4)
       return Process4x(input, frq, res);
     else
       return Process2x(input, frq, res);
-  }
-
-  // Direct access to the raw filter kernel (no oversampling).
-  // Caller is responsible for running at the correct rate.
-  float ProcessDirect(float input, float frq, float res)
-  {
-    return ProcessSample(input, frq, res);
   }
 
 private:
@@ -319,8 +325,8 @@ private:
     // Adaptive thermal noise: models BA662/IR3109 OTA bias current noise.
     // High level when filter is quiet (to seed self-oscillation startup),
     // fades to inaudible once oscillation is established. This keeps
-    // pure self-oscillation patches clean while
-    // still providing reliable oscillation seeding.
+    // pure self-oscillation patches clean while still providing reliable
+    // oscillation seeding.
     mNoiseSeed = mNoiseSeed * 196314165u + 907633515u;
     float white = static_cast<float>(mNoiseSeed) / static_cast<float>(0xFFFFFFFFu) * 2.f - 1.f;
     mInputEnv = std::max(fabsf(input), mInputEnv * mEnvDecay);
@@ -332,19 +338,10 @@ private:
     // Resonance CV: external transistor feeds BA662 OTA control current.
     float k = mJ106Res ? ResK_J106(res) : ResK_J6(res);
 
-    // Frequency-dependent resonance attenuation: hardware resonance
-    // prominence drops ~2.6 dB/oct above 200 Hz (measured from Juno-6
-    // white noise sweep at R=0.8). Models finite bandwidth in the
-    // IR3109 feedback path — transistor fT rolloff reduces loop gain
-    // at higher frequencies. Exponent -0.09 empirically matched to
-    // hardware through the nonlinear filter model.
-    float kRatio = std::max(frq, mFrqRef) / mFrqRef;
-    k *= expf(-0.09f * logf(kRatio));
-
     // Model per-stage OTA gain compression at high resonance.
     // The IR3109's OTA stages saturate individually at high feedback
     // levels, reducing effective loop gain. This is distinct from the
-    // feedback-path OTASat (which limits oscillation amplitude).
+    // BA662 feedback tanh (which limits oscillation amplitude).
     // Soft-clip k above 3.0 to keep R=0.3-0.7 calibration intact
     // while compressing R=0.8-1.0 to match hardware prominence.
     if (k > 3.0f)
@@ -353,12 +350,10 @@ private:
       k = 3.0f + excess / (1.0f + excess * 0.2f);
     }
 
-    // Clamp cutoff just below base Nyquist (0.5 in oversampled domain).
-    // The 2x polyphase downsampler aliases energy above this point back
-    // into the audible band. At 44.1kHz this limits cutoff to ~21kHz;
-    // at 96kHz to ~46kHz.
-    // Warp cutoff to continuous-time frequency, then to integrator coeff
-    float g = tanf(std::min(frq, 0.85f) * static_cast<float>(M_PI) * 0.5f);
+    // Clamp frq for the bilinear transform — prevents tan() from
+    // blowing up near Nyquist.
+    frq = std::min(frq, 0.85f);
+    float g = tanf(frq * static_cast<float>(M_PI) * 0.5f);
     g *= FreqCompensation(k);
 
     // Precompute gains for the 4-pole cascade solution
@@ -368,42 +363,62 @@ private:
     // unconditionally stable regardless of modulation speed.
     float G = g1 * g1 * g1 * g1;
 
-    // Clamp maximum feedback gain. The resonance curve (ResK_J6) can
-    // produce k up to ~6.6 at res=1.0, but values beyond this cause
-    // the self-oscillation amplitude to exceed what the per-stage
-    // OTASat can cleanly limit, producing harsh distortion.
+    // Clamp maximum feedback gain. With kNorm=0.811, ResK_J6(1.0) ≈ 6.0,
+    // soft-clipped to ~4.9 — this clamp is a safety net that doesn't
+    // engage under normal operation but prevents runaway if k is
+    // driven beyond the calibrated range (e.g. by external modulation).
     k = std::min(k, 6.6f);
 
     float S = mS[0] * g1 * g1 * g1 + mS[1] * g1 * g1 + mS[2] * g1 + mS[3];
 
-    // Q compensation: the Juno-6 BA662 feeds a portion of the input
-    // signal alongside the feedback, boosting drive at high resonance.
-    // This counteracts the passband volume drop and pushes the OTA
-    // nonlinearities harder — a key part of the Juno's warmth.
-    float comp = 1.f + k * 0.06f;  // scale with actual feedback gain
-    float u = (input * comp - k * OTASat(S)) / (1.f + k * G);
+    // Q compensation: the BA662 differential topology feeds the input
+    // signal through R5(47K) to +IN alongside the LP4 feedback on -IN
+    // via R3(100K). Since the BA662 gain scales with the resonance CV,
+    // higher resonance boosts the input feed-forward, counteracting the
+    // passband volume drop. The 47K:100K ratio means the input drives
+    // the BA662 about 2x harder than the feedback — a key part of the
+    // Juno's warmth at high resonance.
+    float comp = 1.f + k * 0.06f;
+
+    // BA662 feedback path: models the R3(100K)/R1(1.5K) voltage divider
+    // that attenuates the LP4 output before the BA662 differential pair.
+    // In the physical circuit the attenuation is 0.015 (67:1), placing
+    // the tanh argument at ~0.26 during self-oscillation — barely
+    // nonlinear (~2% compression). This gentle memoryless limiting
+    // stabilizes the limit cycle inherently, with flat amplitude across
+    // frequency and resonance. Harmonic purity (H3 ≈ -45 dB relative
+    // on hardware) falls out of the weak drive rather than requiring
+    // envelope-based amplitude control.
+    //
+    // In our normalized-amplitude model, kFbScale is larger than the
+    // physical 0.015 ratio because state variables are unity-scaled
+    // rather than in millivolts. The k-dependent scaling reduces
+    // effective drive at lower resonance (R=0.9 vs R=1.0), keeping
+    // the amplitude gap within ~1 dB across settings.
+    float kFbScale = 4.20f * std::clamp((k - 3.5f) * 0.8f, 0.3f, 1.f);
+    float fbSig = OTASat(S * kFbScale) / kFbScale;
+
+    float u = (input * comp - k * fbSig) / (1.f + k * G);
 
     float lp4;
     if (mOTASaturation)
     {
-      // Per-stage OTA saturation (NLStage) compresses integrator gain
-      // at self-oscillation amplitude, pulling oscillation pitch flat.
-      // Compensate by boosting g1 proportional to the squared amplitude
-      // of the stage-0 input difference signal (the dominant compression
-      // source — it sees the feedback path directly).
-      //
-      // The diff envelope is normalized by (1+g) to remove the frequency
-      // dependence of the raw signal swing, keeping the correction
-      // consistent across the cutoff range. Without this, the boost
-      // explodes at high frequencies where g is large.
-      //
-      // Coefficient 0.068 calibrated via sweep tests across
-      // frq=0.01–0.50, res=0.86–1.0 at 44.1 kHz and 96 kHz.
-      // Clamp at 0.98 prevents instability when g1 is already near 1.0
-      // (high cutoff frequencies approaching Nyquist).
-      float normDiff = mDiffEnv / (1.f + g);
-      float A2 = normDiff * normDiff;
-      float g1NL = g1 * (1.f + 0.068f * A2);
+      // Per-stage describing function pitch compensation.
+      // The IR3109 OTA stages (kOTAScale=0.35) have effective gain < 1
+      // at self-oscillation amplitude, pulling pitch flat. dfGain boosts
+      // g1 to compensate. Coefficient 0.5 and floor 0.65 tuned against
+      // Juno-6 SN#193284 self-oscillation pitch data. Achieves ±5 cents
+      // from 55–1760 Hz at R=1.0, ±3 cents at R=0.9.
+      float stateAmp = fabsf(mS[3]);
+      float dfGain = 1.f / sqrtf(1.f + 0.5f * stateAmp * stateAmp);
+      dfGain = std::max(dfGain, 0.65f);
+
+      // Fade correction off near Nyquist to prevent aliasing feedback.
+      // At 4x/44.1k: frq=0.08 ≈ 7kHz, frq=0.12 ≈ 10.6kHz. Full
+      // correction below 7kHz, linear fade to zero at 10.6kHz.
+      float hfFade = std::clamp((0.12f - frq) * 25.f, 0.f, 1.f);
+      dfGain = 1.f - hfFade * (1.f - dfGain);
+      float g1NL = g1 / dfGain;
       g1NL = std::min(g1NL, 0.98f);
 
       float gNL = g1NL / (1.f - g1NL);
@@ -412,24 +427,15 @@ private:
       float lp2 = NLStage(mS[1], lp1, gNL, g1NL);
       float lp3 = NLStage(mS[2], lp2, gNL, g1NL);
       lp4 = NLStage(mS[3], lp3, gNL, g1NL);
-
-      // Track stage-0 diff amplitude with asymmetric envelope:
-      // fast attack catches oscillation onset, slow release avoids
-      // injecting pitch modulation within each oscillation cycle.
-      float d0 = fabsf(u - lp1);
-      if (d0 > mDiffEnv)
-          mDiffEnv += 0.3f * (d0 - mDiffEnv);   // ~0.1ms attack
-      else
-          mDiffEnv *= 0.997f;                      // ~10ms release
     }
     else
     {
       // Linear stages: standard TPT trapezoidal integrators without
       // per-stage OTA saturation. The 4-pole cascade solution (G, S, u)
       // above is exact for linear stages, so no Newton-Raphson is needed.
-      // The feedback path still uses OTASat(S) in the u equation, which
-      // slightly reduces effective loop gain vs the ideal k*S. The tiny
-      // g1 boost (0.1% at max k) compensates for this, keeping the
+      // The feedback path uses the BA662 scaled tanh, which at low drive
+      // levels is nearly linear — the tiny g1 boost (0.1% at max k)
+      // compensates for the residual nonlinearity, keeping the
       // self-oscillation frequency on target.
       float g1L = g1 * (1.f + k * 0.0003f);
       float v, s;
