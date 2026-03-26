@@ -18,8 +18,28 @@ public:
   void setMidiLearn(KR106AudioProcessor* proc, int paramIdx)
   { mProcessor = proc; mParamIdx = paramIdx; }
 
+  // Extra right-side pixel for tick marks (fills gap to adjacent slider)
+  void setExtraRight(int px) { mExtraRight = px; }
+
+  // Override to customize tick marks. Default: 11 evenly spaced marks,
+  // lines 0/5/10 bright, others dim.
+  virtual void paintTickMarks(juce::Graphics& g)
+  {
+    auto bright = juce::Colour(219, 219, 219);
+    auto dim    = juce::Colour(126, 126, 126);
+    float tw = 17.f + static_cast<float>(mExtraRight);
+    for (int i = 0; i <= 10; i++)
+    {
+      float y = std::round(44.f - i * 4.f);
+      g.setColour((i == 0 || i == 5 || i == 10) ? bright : dim);
+      g.fillRect(1.f, y, tw, 1.f);
+    }
+  }
+
   void paint(juce::Graphics& g) override
   {
+    paintTickMarks(g);
+
     auto hLine = [&](juce::Colour c, float x1, float y, float x2) {
       g.setColour(c); g.fillRect(x1, y, x2 - x1, 1.f);
     };
@@ -36,8 +56,8 @@ public:
     const auto dark  = juce::Colour(64, 64, 64);
     const auto light = juce::Colour(153, 153, 153);
 
-    // Well (centered in 17px: offset 2px from 13px layout)
-    static constexpr float kOfs = 2.f;
+    // Well (centered in 19px: offset 3px from 13px layout)
+    static constexpr float kOfs = 3.f;
     g.setColour(black); g.fillRect(5.f + kOfs, 1.f, 3.f, 47.f);
     vLine(dark, 4 + kOfs, 1, 48); vLine(dark, 8 + kOfs, 1, 48);
     hLine(dark, 5 + kOfs, 0, 8 + kOfs);  hLine(dark, 5 + kOfs, 48, 8 + kOfs);
@@ -50,7 +70,7 @@ public:
     {
       float hw = mHandleImg.getWidth() / 2.f;
       float hh = mHandleImg.getHeight() / 2.f;
-      float hx = (17.f - hw) * 0.5f;
+      float hx = (19.f - hw) * 0.5f;
       g.drawImage(mHandleImg,
                   hx, fy - hh * 0.5f + 1.f, hw, hh,
                   0, 0, mHandleImg.getWidth(), mHandleImg.getHeight());
@@ -72,7 +92,7 @@ public:
         && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
     {
       g.setColour(juce::Colour(0, 255, 0));
-      g.drawRect(getLocalBounds(), 1);
+      g.drawRect(0, 0, getWidth() - mExtraRight, getHeight(), 1);
     }
   }
 
@@ -148,7 +168,7 @@ public:
     // Warp cursor to the handle so it appears on the control after release
     float val = mParam ? mParam->getValue() : 0.f;
     float fy = std::round(44.f - val * 40.f);
-    auto screenPos = localPointToGlobal(juce::Point<int>(6, static_cast<int>(fy)));
+    auto screenPos = localPointToGlobal(juce::Point<int>(9, static_cast<int>(fy)));
     juce::Desktop::getInstance().getMainMouseSource().setScreenPosition(screenPos.toFloat());
   }
 
@@ -306,6 +326,7 @@ protected:
   juce::RangedAudioParameter* mParam = nullptr;
   KR106AudioProcessor* mProcessor = nullptr;
   int mParamIdx = -1;
+  int mExtraRight = 0;
 
 private:
   KR106Tooltip* mTooltip = nullptr;
@@ -327,32 +348,26 @@ public:
                  const juce::Image& handleImg, int* adsrMode)
     : KR106Slider(param, tip, handleImg), mAdsrMode(adsrMode) {}
 
-  void paint(juce::Graphics& g) override
+  void paintTickMarks(juce::Graphics& g) override
   {
     auto bright = juce::Colour(219, 219, 219);
     auto dim    = juce::Colour(126, 126, 126);
     if (mAdsrMode && *mAdsrMode == 0)
     {
-      // J6: 11 tick marks, 1px tall, 13px wide
-      // Lines 0, 5, 10 are bright, others dim
-      for (int i = 0; i <= 10; i++)
-      {
-        float y = std::round(44.f - i * 4.f);
-        g.setColour((i == 0 || i == 5 || i == 10) ? bright : dim);
-        g.fillRect(1.f, y, 15.f, 1.f);
-      }
+      // J6: 11 tick marks (same as base class default)
+      KR106Slider::paintTickMarks(g);
     }
     else
     {
       // J106: 4 tick marks at switch positions, bright
+      float tw = 17.f + static_cast<float>(mExtraRight);
       for (int i = 0; i < 4; i++)
       {
         float y = std::round(44.f - i * (40.f / 3.f));
         g.setColour(bright);
-        g.fillRect(1.f, y, 15.f, 1.f);
+        g.fillRect(1.f, y, tw, 1.f);
       }
     }
-    KR106Slider::paint(g);
   }
 
   void mouseDrag(const juce::MouseEvent& e) override
@@ -386,4 +401,70 @@ public:
 
 private:
   int* mAdsrMode = nullptr;
+};
+
+// Arp Rate slider: when DAW sync is enabled, draws tick marks for note
+// divisions and snaps to discrete positions. When sync is off, behaves
+// as a normal continuous slider (no tick marks).
+class KR106ArpRateSlider : public KR106Slider
+{
+public:
+  KR106ArpRateSlider(juce::RangedAudioParameter* param, KR106Tooltip* tip,
+                     const juce::Image& handleImg, bool* syncFlag)
+    : KR106Slider(param, tip, handleImg), mSyncFlag(syncFlag) {}
+
+  void paintTickMarks(juce::Graphics& g) override
+  {
+    if (mSyncFlag && *mSyncFlag)
+    {
+      auto bright = juce::Colour(219, 219, 219);
+      auto dim    = juce::Colour(126, 126, 126);
+      // 9 tick marks at division positions (evenly spaced across 40px travel)
+      float tw = 17.f + static_cast<float>(mExtraRight);
+      for (int i = 0; i < kr106::kNumArpDivisions; i++)
+      {
+        float norm = static_cast<float>(i) / static_cast<float>(kr106::kNumArpDivisions - 1);
+        float y = std::round(44.f - norm * 40.f);
+        bool major = (i == 0 || i == kr106::kNumArpDivisions / 2 || i == kr106::kNumArpDivisions - 1);
+        g.setColour(major ? bright : dim);
+        g.fillRect(1.f, y, tw, 1.f);
+      }
+    }
+    else
+    {
+      KR106Slider::paintTickMarks(g);
+    }
+  }
+
+  void mouseDrag(const juce::MouseEvent& e) override
+  {
+    KR106Slider::mouseDrag(e);
+    if (mSyncFlag && *mSyncFlag && mParam)
+    {
+      float val = mParam->getValue();
+      float steps = static_cast<float>(kr106::kNumArpDivisions - 1);
+      float snapped = std::round(val * steps) / steps;
+      if (snapped != val)
+      {
+        mParam->setValueNotifyingHost(snapped);
+        repaint();
+      }
+    }
+  }
+
+  void mouseUp(const juce::MouseEvent& e) override
+  {
+    if (mSyncFlag && *mSyncFlag && mParam)
+    {
+      float val = mParam->getValue();
+      float steps = static_cast<float>(kr106::kNumArpDivisions - 1);
+      float snapped = std::round(val * steps) / steps;
+      if (snapped != val)
+        mParam->setValueNotifyingHost(snapped);
+    }
+    KR106Slider::mouseUp(e);
+  }
+
+private:
+  bool* mSyncFlag = nullptr;
 };

@@ -341,6 +341,7 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
     case kArpRate:
       mSliderArpRate = static_cast<float>(value);
       mArp.mRate = kr106::Arpeggiator::arpRate(mSliderArpRate);
+      mArp.mDivision = kr106::divisionFromSlider(mSliderArpRate);
       break;
     case kArpMode: mArp.mMode = static_cast<int>(value); mArp.mStepIndex = 0; mArp.mDirection = 1; break;
     case kArpRange: mArp.mRange = static_cast<int>(value); break;

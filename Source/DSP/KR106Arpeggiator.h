@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <vector>
 
 // KR-106 arpeggiator
@@ -16,6 +17,51 @@
 
 namespace kr106 {
 
+// Note divisions for DAW sync (ordered slowest to fastest)
+enum ArpDivision
+{
+  kDiv1 = 0,   // whole note:   0.25 steps per beat
+  kDiv2,       // 1/2 note:     0.5 steps per beat
+  kDiv4,       // 1/4 note:     1 step per beat
+  kDiv4T,      // 1/4 triplet:  1.5 steps per beat
+  kDiv8,       // 1/8 note:     2 steps per beat
+  kDiv8T,      // 1/8 triplet:  3 steps per beat
+  kDiv16,      // 1/16 note:    4 steps per beat
+  kDiv16T,     // 1/16 triplet: 6 steps per beat
+  kDiv32,      // 1/32 note:    8 steps per beat
+  kNumArpDivisions
+};
+
+// Beats per arp step for each division
+static constexpr double kDivBeats[kNumArpDivisions] = {
+  4.0,         // 1/1
+  2.0,         // 1/2
+  1.0,         // 1/4
+  2.0 / 3.0,   // 1/4T
+  0.5,         // 1/8
+  1.0 / 3.0,   // 1/8T
+  0.25,        // 1/16
+  1.0 / 6.0,   // 1/16T
+  0.125        // 1/32
+};
+
+static constexpr const char* kDivNames[kNumArpDivisions] = {
+  "1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
+};
+
+// Map slider 0-1 to division index (7 positions)
+static inline int divisionFromSlider(float t)
+{
+  int d = static_cast<int>(std::round(t * (kNumArpDivisions - 1)));
+  return std::max(0, std::min(d, kNumArpDivisions - 1));
+}
+
+// Slider value for a given division index
+static inline float sliderFromDivision(int d)
+{
+  return static_cast<float>(d) / static_cast<float>(kNumArpDivisions - 1);
+}
+
 struct Arpeggiator
 {
   bool mEnabled = false;
@@ -23,6 +69,14 @@ struct Arpeggiator
   int mRange = 0;      // 0=1oct, 1=2oct, 2=3oct
   float mRate = 120.f; // steps per minute (mapped from slider)
   float mSampleRate = 44100.f;
+
+  // DAW sync state (set by processor each block)
+  bool mSyncToHost = false;
+  bool mHostPlaying = false;
+  double mHostBPM = 120.0;
+  double mHostBeatPos = 0.0;   // beat position at start of current block
+  int mDivision = kDiv16;      // current note division (when synced)
+  int64_t mLastSyncStep = -1;  // last beat-grid step index (for edge detection)
 
   /*
   * arp_rate_hz — Juno-106 Arpeggio Rate oscillator frequency
@@ -108,6 +162,7 @@ struct Arpeggiator
     mDirection = 1;
     mPhase = 0.f;
     mLastNote = -1;
+    mLastSyncStep = -1;
   }
 
   // Physical keyboard top note (Juno-106: 61 keys, C1–C6, MIDI 36–96).
@@ -206,9 +261,49 @@ struct Arpeggiator
         noteOff(mLastNote, 0);
         mLastNote = -1;
       }
+      mLastSyncStep = -1;
       return;
     }
 
+    if (mSyncToHost)
+    {
+      // DAW sync: silence when transport is stopped
+      if (!mHostPlaying)
+      {
+        if (mLastNote >= 0) { noteOff(mLastNote, 0); mLastNote = -1; }
+        mLastSyncStep = -1;
+        return;
+      }
+
+      int div = std::max(0, std::min(mDivision, static_cast<int>(kNumArpDivisions) - 1));
+      double divBeats = kDivBeats[div];
+      double beatsPerSample = mHostBPM / (60.0 * static_cast<double>(mSampleRate));
+
+      for (int s = 0; s < nFrames; s++)
+      {
+        double beatPos = mHostBeatPos + s * beatsPerSample;
+        int64_t stepNow = static_cast<int64_t>(std::floor(beatPos / divBeats));
+
+        if (stepNow != mLastSyncStep)
+        {
+          mLastSyncStep = stepNow;
+          mTickCount.fetch_add(1, std::memory_order_relaxed);
+
+          if (mLastNote >= 0)
+            noteOff(mLastNote, s);
+
+          int note = NextNote();
+          if (note >= 0)
+          {
+            noteOn(note, s);
+            mLastNote = note;
+          }
+        }
+      }
+      return;
+    }
+
+    // Free-running mode: phase accumulator at mRate steps/minute
     float inc = mRate / (60.f * mSampleRate);
 
     for (int s = 0; s < nFrames; s++)

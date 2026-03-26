@@ -81,9 +81,9 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     add(new KR106Switch(param(kPortaMode), switchV, 3),    92, 161,   9, 24);
 
     // Bender sensitivity sliders
-    addSlider(kBenderDco, new KR106Slider(param(kBenderDco), tip, sliderHdl),  35, 147, 17, 49);
-    addSlider(kBenderVcf, new KR106Slider(param(kBenderVcf), tip, sliderHdl),  53, 147, 17, 49);
-    addSlider(kBenderLfo, new KR106Slider(param(kBenderLfo), tip, sliderHdl),  71, 147, 17, 49);
+    addSlider(kBenderDco, new KR106Slider(param(kBenderDco), tip, sliderHdl),  34, 147, 20, 49)->setExtraRight(1);
+    addSlider(kBenderVcf, new KR106Slider(param(kBenderVcf), tip, sliderHdl),  52, 147, 20, 49)->setExtraRight(1);
+    addSlider(kBenderLfo, new KR106Slider(param(kBenderLfo), tip, sliderHdl),  70, 147, 19, 49);
 
     // Pitch bend lever with vertical LFO trigger
     add(new KR106Bender(param(kBender), benderGrad, &p),   66, 200,  60, 12);
@@ -95,16 +95,16 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
 
     add(new KR106Switch(param(kArpMode),  switchV, 3), 175, 46, 9, 24);
     add(new KR106Switch(param(kArpRange), switchV, 3), 212, 46, 9, 24);
-    addSlider(kArpRate, new KR106Slider(param(kArpRate), tip, sliderHdl), 228, 33, 17, 49);
+    addSlider(kArpRate, new KR106ArpRateSlider(param(kArpRate), tip, sliderHdl, &p.mArpSyncHost), 227, 33, 19, 49);
 
     // === LFO SECTION ===
-    addSlider(kLfoRate, new KR106Slider(param(kLfoRate), tip, sliderHdl), 250, 33, 17, 49);
-    addSlider(kLfoDelay, new KR106Slider(param(kLfoDelay), tip, sliderHdl), 268, 33, 17, 49);
+    addSlider(kLfoRate, new KR106Slider(param(kLfoRate), tip, sliderHdl), 249, 33, 20, 49)->setExtraRight(1);
+    addSlider(kLfoDelay, new KR106Slider(param(kLfoDelay), tip, sliderHdl), 267, 33, 19, 49);
     add(new KR106Switch(param(kLfoMode), switchV, 2),   294, 46,  9, 24);
 
     // === DCO SECTION ===
-    addSlider(kDcoLfo, new KR106Slider(param(kDcoLfo), tip, sliderHdl), 314, 33, 17, 49);
-    addSlider(kDcoPwm, new KR106Slider(param(kDcoPwm), tip, sliderHdl), 332, 33, 17, 49);
+    addSlider(kDcoLfo, new KR106Slider(param(kDcoLfo), tip, sliderHdl), 313, 33, 20, 49)->setExtraRight(1);
+    addSlider(kDcoPwm, new KR106Slider(param(kDcoPwm), tip, sliderHdl), 331, 33, 19, 49);
     add(new KR106Switch(param(kPwmMode), switchV, 3),   351, 46,  9, 24);
 
     // DCO waveform buttons+LEDs
@@ -116,31 +116,31 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     add(new KR106HorizontalSwitch(param(kOctTranspose), switchH, 3), 389, 84, 24, 9);
 
     // DCO Sub/Noise sliders
-    addSlider(kDcoSub, new KR106Slider(param(kDcoSub), tip, sliderHdl), 430, 33, 17, 49);
-    addSlider(kDcoNoise, new KR106Slider(param(kDcoNoise), tip, sliderHdl), 446, 33, 17, 49);
+    addSlider(kDcoSub, new KR106Slider(param(kDcoSub), tip, sliderHdl), 427, 33, 20, 49)->setExtraRight(1);
+    addSlider(kDcoNoise, new KR106Slider(param(kDcoNoise), tip, sliderHdl), 445, 33, 19, 49);
 
     // === HPF SECTION ===
     { auto* s = new KR106HPFSlider(param(kHpfFreq), tip, sliderHdl, &p.mDSP.mAdsrMode);
       s->setMidiLearn(&p, kHpfFreq);
-      add(s, 471, 33, 17, 49); }
+      add(s, 470, 33, 19, 49); }
 
     // === VCF SECTION ===
-    addSlider(kVcfFreq, new KR106Slider(param(kVcfFreq), tip, sliderHdl), 496, 33, 17, 49);
-    addSlider(kVcfRes, new KR106Slider(param(kVcfRes), tip, sliderHdl), 513, 33, 17, 49);
+    addSlider(kVcfFreq, new KR106Slider(param(kVcfFreq), tip, sliderHdl), 495, 33, 20, 49)->setExtraRight(1);
+    addSlider(kVcfRes, new KR106Slider(param(kVcfRes), tip, sliderHdl), 513, 33, 19, 49);
     add(new KR106Switch(param(kVcfEnvInv), switchV, 2), 536, 46,  9, 24);
-    addSlider(kVcfEnv, new KR106Slider(param(kVcfEnv), tip, sliderHdl), 550, 33, 17, 49);
-    addSlider(kVcfLfo, new KR106Slider(param(kVcfLfo), tip, sliderHdl), 568, 33, 17, 49);
-    addSlider(kVcfKbd, new KR106Slider(param(kVcfKbd), tip, sliderHdl), 586, 33, 17, 49);
+    addSlider(kVcfEnv, new KR106Slider(param(kVcfEnv), tip, sliderHdl), 549, 33, 20, 49)->setExtraRight(1);
+    addSlider(kVcfLfo, new KR106Slider(param(kVcfLfo), tip, sliderHdl), 567, 33, 20, 49)->setExtraRight(1);
+    addSlider(kVcfKbd, new KR106Slider(param(kVcfKbd), tip, sliderHdl), 585, 33, 19, 49);
 
     // === VCA SECTION ===
     add(new KR106Switch(param(kVcaMode), switchV, 2), 614, 45,  9, 24);
-    addSlider(kVcaLevel, new KR106Slider(param(kVcaLevel), tip, sliderHdl), 635, 33, 17, 49);
+    addSlider(kVcaLevel, new KR106Slider(param(kVcaLevel), tip, sliderHdl), 634, 33, 19, 49);
 
     // === ENVELOPE SECTION ===
-    addSlider(kEnvA, new KR106Slider(param(kEnvA), tip, sliderHdl), 657, 33, 17, 49);
-    addSlider(kEnvD, new KR106Slider(param(kEnvD), tip, sliderHdl), 675, 33, 17, 49);
-    addSlider(kEnvS, new KR106Slider(param(kEnvS), tip, sliderHdl), 693, 33, 17, 49);
-    addSlider(kEnvR, new KR106Slider(param(kEnvR), tip, sliderHdl), 711, 33, 17, 49);
+    addSlider(kEnvA, new KR106Slider(param(kEnvA), tip, sliderHdl), 656, 33, 20, 49)->setExtraRight(1);
+    addSlider(kEnvD, new KR106Slider(param(kEnvD), tip, sliderHdl), 674, 33, 20, 49)->setExtraRight(1);
+    addSlider(kEnvS, new KR106Slider(param(kEnvS), tip, sliderHdl), 692, 33, 20, 49)->setExtraRight(1);
+    addSlider(kEnvR, new KR106Slider(param(kEnvR), tip, sliderHdl), 710, 33, 19, 49);
 
     // ADSR mode: horizontal 2-way (centered below envelope sliders)
     add(new KR106HorizontalSwitch(param(kAdsrMode), switchH, 2), 680, 84, 24, 9);
@@ -225,6 +225,7 @@ void KR106Editor::showSettingsMenu()
     items.push_back(KR106MenuItem::sep());
     items.push_back(KR106MenuItem::item(20, "Ignore MIDI Velocity",      true, mProcessor.mIgnoreVelocity));
     items.push_back(KR106MenuItem::item(21, "Limit Arp to Kbd Range", true, mProcessor.mArpLimitKbd));
+    items.push_back(KR106MenuItem::item(24, "Sync Arp to Host",      true, mProcessor.mArpSyncHost));
     items.push_back(KR106MenuItem::item(22, "Mono Retrigger",        true, mProcessor.mMonoRetrigger));
     items.push_back(KR106MenuItem::item(23, "Classic VCF Frq Scale", true, mProcessor.mJ6ClassicVcf));
     items.push_back(KR106MenuItem::sep());
@@ -265,6 +266,10 @@ void KR106Editor::showSettingsMenu()
             {
                 mProcessor.mArpLimitKbd = !mProcessor.mArpLimitKbd;
                 mProcessor.mDSP.mArp.mLimitToKeyboard = mProcessor.mArpLimitKbd;
+            }
+            if (r == 24)
+            {
+                mProcessor.mArpSyncHost = !mProcessor.mArpSyncHost;
             }
             if (r == 22)
             {
