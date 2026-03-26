@@ -355,6 +355,11 @@ void KR106Editor::qwertyAllNotesOff()
 bool KR106Editor::keyPressed(const juce::KeyPress& key)
 {
     int code = key.getKeyCode();
+    // Ignore case
+    if (code >= 'a' && code <= 'z')
+    {
+        code -= 'a' - 'A';
+    }
 
     // Left/right arrows: cycle scope modes
     if (key == juce::KeyPress::leftKey)  { mScope->cycleMode(-1); return true; }
