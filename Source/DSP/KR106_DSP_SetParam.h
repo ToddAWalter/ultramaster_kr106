@@ -209,6 +209,7 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       mAdsrMode = static_cast<int>(value);
       bool j6 = (mAdsrMode == 0);
       ForEachVoice([j6](kr106::Voice<T>& v) {
+        v.mJ6Mode = j6;
         v.mADSR.mJ6Mode = j6;
         v.mVCF.mJ106Res = !j6;
         v.mOsc.mPulseInvert = !j6;
@@ -225,7 +226,6 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       SetParam(kVcfEnv, mSliderVcfEnv);
       SetParam(kVcfKbd, mSliderVcfKbd);
       SetParam(kBenderVcf, mSliderBenderVcf);
-      SetParam(kHpfFreq, mSliderHpf);
       break;
     }
     case kBender:
@@ -247,19 +247,7 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
 
     case kHpfFreq: {
       mSliderHpf = static_cast<float>(value);
-      if (mAdsrMode == 0)
-      {
-        // Map J106 preset values to J6 continuous positions
-        // 0,1 (bass boost/flat) → 0; 2 (240Hz) → 0.685; 3 (720Hz) → 2.202
-        static constexpr float kJ106toJ6[] = { 0.f, 0.f, 0.685f, 2.202f };
-        float v = mSliderHpf;
-        int iv = static_cast<int>(v + 0.5f);
-        if (iv >= 0 && iv <= 3 && std::abs(v - iv) < 0.01f)
-          v = kJ106toJ6[iv];
-        mHPF.SetFreqHz(getJuno6HPFFreqPCHIP(v / 3.f));
-      }
-      else
-        mHPF.SetMode(static_cast<int>(mSliderHpf + 0.5f));
+      mHPF.SetMode(static_cast<int>(mSliderHpf + 0.5f));
       break;
     }
 

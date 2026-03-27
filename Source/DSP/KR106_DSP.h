@@ -495,13 +495,6 @@ public:
   int mActiveVoices = 6;
   bool mIgnoreVelocity = true;
   bool mMonoRetrigger = true;
-  bool mJ6ClassicVcf = false;
-
-  void SetJ6ClassicVcf(bool classic)
-  {
-    mJ6ClassicVcf = classic;
-    ForEachVoice([classic](kr106::Voice<T>& v) { v.mJ6ClassicVcf = classic; });
-  }
   int mVoiceNote[kMaxVoices] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
   int64_t mVoiceAge[kMaxVoices] = {};
   int64_t mVoiceAgeCounter = 0;

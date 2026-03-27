@@ -25,7 +25,7 @@ public:
 
     static juce::File getDefaultCSVPath()
     {
-        return getAppDataDir().getChildFile("patchbank.csv");
+        return getAppDataDir().getChildFile("patchbank_v2.csv");
     }
 
     static juce::File getSettingsFile()
@@ -76,9 +76,10 @@ public:
     // Bank prefix from position: A11..A88, B11..B88
     static juce::String getPrefix(int idx)
     {
-        char group = static_cast<char>('A' + idx / 64);
-        int bank = (idx % 64) / 8 + 1;
-        int patch = idx % 8 + 1;
+        int bankIdx = idx % 128; // wrap for J6/J106 banks
+        char group = static_cast<char>('A' + bankIdx / 64);
+        int bank = (bankIdx % 64) / 8 + 1;
+        int patch = bankIdx % 8 + 1;
         return juce::String::charToString(group) + juce::String(bank) + juce::String(patch);
     }
 
@@ -111,6 +112,8 @@ public:
         {
             defaultCSV.getParentDirectory().createDirectory();
             writeFactory(defaultCSV, params, numParams, exclude);
+            // New bank version: clear any saved path to old CSV
+            saveSetting("presetFile", "");
         }
 
         // Load persisted path from settings, fall back to default
@@ -180,8 +183,8 @@ public:
 
         // Parse data rows
         std::vector<KR106Preset> loaded;
-        loaded.reserve(128);
-        for (int i = headerIdx + 1; i < lines.size() && (int)loaded.size() < 128; i++)
+        loaded.reserve(256);
+        for (int i = headerIdx + 1; i < lines.size() && (int)loaded.size() < 256; i++)
         {
             auto line = lines[i].trim();
             if (line.isEmpty() || line.startsWith("#")) continue;
@@ -216,8 +219,8 @@ public:
             loaded.push_back(std::move(preset));
         }
 
-        // Pad to 128 if needed
-        while ((int)loaded.size() < 128)
+        // Pad to 256 if needed (128 J6 + 128 J106)
+        while ((int)loaded.size() < 256)
         {
             KR106Preset init;
             init.name = "Init";

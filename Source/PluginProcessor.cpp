@@ -27,7 +27,7 @@ static bool isLivePerformanceParam(int idx)
          idx == kPortaMode || idx == kPortaRate || idx == kTransposeOffset ||
          idx == kMasterVol || idx == kBender || idx == kBenderDco || idx == kBenderVcf ||
          idx == kBenderLfo || idx == kPower ||
-         idx == kAdsrMode;
+         idx == kAdsrMode;  // mode selects the bank, not a preset parameter
 }
 
 static bool sExcludeMask[kNumParams] = {};
@@ -180,7 +180,7 @@ KR106AudioProcessor::KR106AudioProcessor()
   };
 
   auto vcfHzFromSlider = [this](float v) -> float {
-    if (mDSP.mAdsrMode == 0 && mJ6ClassicVcf)
+    if (mDSP.mAdsrMode == 0)
       return kr106::j6_vcf_freq_from_slider(v);
     return kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80));
   };
@@ -363,15 +363,7 @@ KR106AudioProcessor::KR106AudioProcessor()
   addSlider(kDcoNoise,   "DCO Noise",   0.f, 0.f, 1.f, fmtPct, parsePct);
 
   // HPF (4-position switch)
-  SFV fmtHpf = [this](float v, int) -> juce::String {
-    if (mDSP.mAdsrMode == 0)
-    {
-      // J6: continuous HPF via PCHIP curve
-      float hz = getJuno6HPFFreqPCHIP(v / 3.f);
-      if (hz >= 1000.f) return juce::String(hz / 1000.f, 1) + " kHz";
-      return juce::String(hz, 0) + " Hz";
-    }
-    // J106: 4-position switch
+  SFV fmtHpf = [](float v, int) -> juce::String {
     constexpr const char* labels[] = { "Bass Boost", "Flat", "240 Hz", "720 Hz" };
     return juce::String(labels[juce::jlimit(0, 3, juce::roundToInt(v))]);
   };
@@ -1047,61 +1039,38 @@ void KR106AudioProcessor::parameterChanged(int paramIdx, float newValue)
     }
     mDSP.SetParam(paramIdx, static_cast<double>(newValue));
 
-    // Remap VCF and HPF sliders when switching modes (frequency-matched)
+    // Remap params when switching modes (preserve Hz/ms values, not slider positions)
     // Only remap if the mode actually changed (not just reloaded same value)
     if (paramIdx == kAdsrMode && (newValue > 0.5f) != mWasJ106Mode)
     {
-      mWasJ106Mode = (newValue > 0.5f);
-      // VCF freq: only remap when Classic VCF Frq Scale is on,
-      // since otherwise both modes use dacToHz and share the same curve.
-      if (mJ6ClassicVcf)
-      {
-        float vcfSlider = mParams[kVcfFreq]->getValue(); // normalized 0–1
-        // Get current frequency from the source mode's curve
-        float srcHz;
-        if (newValue > 0.5f)
-          srcHz = kr106::j6_vcf_freq_from_slider(vcfSlider);  // was J6, get J6 freq
-        else
-          srcHz = kr106::dacToHz(static_cast<uint16_t>(vcfSlider * 0x3F80)); // was J106
+      bool toJ106 = (newValue > 0.5f);
+      mWasJ106Mode = toJ106;
 
-        // Binary search for slider position on the target mode's curve
-        auto targetFn = (newValue > 0.5f)
-          ? std::function<float(float)>([](float v) { return kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80)); })
-          : std::function<float(float)>([](float v) { return kr106::j6_vcf_freq_from_slider(v); });
+      // Switch to Manual mode (no preset loaded)
+      mInitialDefault = true;
+
+      // Binary search helper: find slider position on targetFn that matches srcHz
+      auto remap = [](float srcHz,
+                      std::function<float(float)> targetFn) -> float {
         float lo = 0.f, hi = 1.f;
         for (int i = 0; i < 32; i++)
         {
           float mid = (lo + hi) * 0.5f;
           if (targetFn(mid) < srcHz) lo = mid; else hi = mid;
         }
-        float newSlider = (lo + hi) * 0.5f;
-        mParams[kVcfFreq]->setValueNotifyingHost(newSlider);
-      }
+        return (lo + hi) * 0.5f;
+      };
 
-      float hpfDenorm = mParams[kHpfFreq]->convertFrom0to1(mParams[kHpfFreq]->getValue()); // 0–3
-      if (newValue > 0.5f)
+      auto j6Hz   = [](float v) { return kr106::j6_vcf_freq_from_slider(v); };
+      auto j106Hz = [](float v) { return kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80)); };
+
+      // VCF Freq: preserve frequency in Hz
       {
-        // J6 → J106: find closest J106 position by frequency
-        // J6 has no bass boost, so map to Flat (1) as minimum
-        float j6Hz = getJuno6HPFFreqPCHIP(hpfDenorm / 3.f);
-        static constexpr float kJ106Hz[] = { 0.f, 0.f, 240.f, 720.f };
-        int best = 1; // Flat
-        float bestDist = j6Hz; // distance from 0 Hz (flat)
-        for (int i = 2; i <= 3; i++)
-        {
-          float d = std::abs(j6Hz - kJ106Hz[i]);
-          if (d < bestDist) { bestDist = d; best = i; }
-        }
-        mParams[kHpfFreq]->setValueNotifyingHost(static_cast<float>(best) / 3.f);
-      }
-      else
-      {
-        // J106 → J6: map integer positions to matching J6 slider values
-        // 0,1 → 0; 2 (240Hz) → 0.228 norm; 3 (720Hz) → 0.734 norm
-        static constexpr float kJ106toJ6norm[] = { 0.f, 0.f, 0.228f, 0.734f };
-        int iv = juce::roundToInt(hpfDenorm);
-        if (iv >= 0 && iv <= 3)
-          mParams[kHpfFreq]->setValueNotifyingHost(kJ106toJ6norm[iv]);
+        float vcfSlider = mParams[kVcfFreq]->getValue();
+        float srcHz = toJ106 ? j6Hz(vcfSlider) : j106Hz(vcfSlider);
+        auto targetFn = toJ106 ? std::function<float(float)>(j106Hz)
+                                : std::function<float(float)>(j6Hz);
+        mParams[kVcfFreq]->setValueNotifyingHost(remap(srcHz, targetFn));
       }
     }
 
@@ -1206,27 +1175,27 @@ void KR106AudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 
 int KR106AudioProcessor::getNumPrograms()
 {
-  std::lock_guard<std::mutex> lock(mPresetMgr.mMutex);
-  return static_cast<int>(mPresetMgr.mPresets.size());
+  return 128; // each bank has 128 slots
 }
 
 int KR106AudioProcessor::getCurrentProgram()  { return mCurrentPreset; }
 
 const juce::String KR106AudioProcessor::getProgramName(int index)
 {
-  return mPresetMgr.getDisplayName(index);
+  return mPresetMgr.getDisplayName(index + presetBankOffset());
 }
 
 void KR106AudioProcessor::setCurrentProgram(int index)
 {
-  dbgLog("setCurrentProgram index=" + juce::String(index));
+  int absIndex = index + presetBankOffset();
+  dbgLog("setCurrentProgram index=" + juce::String(index) + " abs=" + juce::String(absIndex));
 
   // Copy values out under lock
   float values[kNumParams] = {};
   {
     std::lock_guard<std::mutex> lock(mPresetMgr.mMutex);
-    if (index < 0 || index >= (int)mPresetMgr.mPresets.size()) return;
-    auto& src = mPresetMgr.mPresets[index].values;
+    if (absIndex < 0 || absIndex >= (int)mPresetMgr.mPresets.size()) return;
+    auto& src = mPresetMgr.mPresets[absIndex].values;
     int n = std::min((int)src.size(), (int)kNumParams);
     for (int i = 0; i < n; i++)
       values[i] = src[i];
@@ -1255,38 +1224,42 @@ void KR106AudioProcessor::reloadPresetsFromFile(const juce::File& file)
 
 void KR106AudioProcessor::saveCurrentPresetToCSV(const juce::String& name)
 {
-  mPresetMgr.captureCurrentParams(mCurrentPreset, name, mParams, kNumParams);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
+  int abs = absPresetIndex();
+  mPresetMgr.captureCurrentParams(abs, name, mParams, kNumParams);
+  mPresetMgr.saveOnePreset(abs, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
 }
 
 void KR106AudioProcessor::renameCurrentPreset(const juce::String& name)
 {
-  mPresetMgr.renamePreset(mCurrentPreset, name);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
+  int abs = absPresetIndex();
+  mPresetMgr.renamePreset(abs, name);
+  mPresetMgr.saveOnePreset(abs, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
 }
 
 void KR106AudioProcessor::clearCurrentPreset()
 {
-  mPresetMgr.clearPreset(mCurrentPreset, kNumParams);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
+  int abs = absPresetIndex();
+  mPresetMgr.clearPreset(abs, kNumParams);
+  mPresetMgr.saveOnePreset(abs, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
   setCurrentProgram(mCurrentPreset);
 }
 
 void KR106AudioProcessor::pastePreset(const KR106Preset& preset)
 {
-  mPresetMgr.setPreset(mCurrentPreset, preset);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
+  int abs = absPresetIndex();
+  mPresetMgr.setPreset(abs, preset);
+  mPresetMgr.saveOnePreset(abs, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
   setCurrentProgram(mCurrentPreset);
 }
 
 KR106Preset KR106AudioProcessor::getPreset(int idx) const
 {
-  return mPresetMgr.getPreset(idx);
+  return mPresetMgr.getPreset(idx + presetBankOffset());
 }
 
 bool KR106AudioProcessor::isCurrentPresetDirty() const
 {
-  auto preset = mPresetMgr.getPreset(mCurrentPreset);
+  auto preset = mPresetMgr.getPreset(absPresetIndex());
   for (int i = 0; i < kNumParams; i++)
   {
     if (isLivePerformanceParam(i)) continue;
@@ -1324,10 +1297,6 @@ void KR106AudioProcessor::loadGlobalSettings()
   auto monoRetrig = KR106PresetManager::getSetting("monoRetrigger", true);
   mMonoRetrigger = (bool)monoRetrig;
   mDSP.mMonoRetrigger = mMonoRetrigger;
-
-  auto j6vcf = KR106PresetManager::getSetting("j6ClassicVcf", false);
-  mJ6ClassicVcf = (bool)j6vcf;
-  mDSP.SetJ6ClassicVcf(mJ6ClassicVcf);
 
   auto vcfOS = KR106PresetManager::getSetting("vcfOversample", 4);
   mVcfOversample = ((int)vcfOS == 2) ? 2 : 4;
@@ -1370,7 +1339,6 @@ void KR106AudioProcessor::saveGlobalSettings()
   KR106PresetManager::saveSetting("arpSyncHost", mArpSyncHost);
   KR106PresetManager::saveSetting("lfoSyncHost", mLfoSyncHost);
   KR106PresetManager::saveSetting("monoRetrigger", mMonoRetrigger);
-  KR106PresetManager::saveSetting("j6ClassicVcf", mJ6ClassicVcf);
   KR106PresetManager::saveSetting("vcfOversample", mVcfOversample);
 
   // Save per-voice variance as flat array [v0p0, v0p1, ..., v9p5]

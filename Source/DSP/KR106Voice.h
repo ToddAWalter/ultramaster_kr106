@@ -40,7 +40,7 @@ public:
   float mDcoNoise     = 0.f;
   float mVcfFreq      = 700.f; // Hz (J6 classic mode)
   float mVcfFreqJ106  = 700.f; // Hz (J106-compatible mode)
-  bool  mJ6ClassicVcf = false; // true = J6 analog VCF curve + C1 KBD ref
+  bool  mJ6Mode = false;       // true = J6 mode (analog VCF curve + C1 KBD ref)
   float mVcfRes       = 0.f;
   float mVcfEnv       = 0.f;
   float mVcfLfo       = 0.f;
@@ -593,8 +593,8 @@ public:
         static constexpr float kSemiToLogFreq = 0.05776f;
 
         float envScale = (mVcfEnvInvert > 0) ? kEnvScale : kEnvInvScale;
-        float vcfBaseHz = mJ6ClassicVcf ? mVcfFreq : mVcfFreqJ106;
-        float kbdRef    = mJ6ClassicVcf ? 32.703f  : 261.626f;
+        float vcfBaseHz = mJ6Mode ? mVcfFreq : mVcfFreqJ106;
+        float kbdRef    = mJ6Mode ? 32.703f  : 261.626f;
         float vcfFrq = logf(vcfBaseHz) + mVcfFreqOffset;
 
         // J6: KBD tracking sees the pitch CV (octave switch + portamento)

@@ -68,7 +68,7 @@ public:
   bool mArpSyncHost = false;   // persisted per instance (sync arp to DAW tempo)
   bool mLfoSyncHost = false;   // persisted per instance (sync LFO to DAW tempo)
   bool mMonoRetrigger = true;  // persisted per instance
-  bool mJ6ClassicVcf = false;  // persisted per instance (true = authentic J6 VCF)
+
   int mVcfOversample = 4;      // persisted per instance (2 or 4)
   bool mInitialDefault = true; // shows "Default" until first preset change
 
@@ -142,7 +142,9 @@ private:
   std::atomic<int> mUIMidiHead{0};
   std::atomic<int> mUIMidiTail{0};
 
-  int mCurrentPreset = 0;
+  int mCurrentPreset = 0;  // 0-127 within current bank
+  int presetBankOffset() const { return (mDSP.mAdsrMode == 0) ? 0 : 128; }
+  int absPresetIndex() const { return mCurrentPreset + presetBankOffset(); }
 
   // Flag: emit SysEx dump for current preset values on next processBlock
   std::atomic<bool> mSendPresetSysEx{false};
