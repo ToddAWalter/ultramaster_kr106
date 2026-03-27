@@ -166,11 +166,11 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
 
         add(new KR106IconButton(gearSvg, [this]() {
             showSettingsMenu();
-        }), 742, 82, 14, 14);
+        }), 741, 75, 18, 18);
 
         add(new KR106IconButton(dbSvg, [this]() {
             mPresetDisplay->openContextMenu();
-        }), 760, 82, 14, 14);
+        }), 760, 75, 18, 18);
     }
 
     // === KEYBOARD ===
@@ -233,7 +233,6 @@ void KR106Editor::showSettingsMenu()
     items.push_back(KR106MenuItem::item(24, "Sync Arp to Host",      true, mProcessor.mArpSyncHost));
     items.push_back(KR106MenuItem::item(25, "Sync LFO to Host",      true, mProcessor.mLfoSyncHost));
     items.push_back(KR106MenuItem::item(22, "Mono Retrigger",        true, mProcessor.mMonoRetrigger));
-    items.push_back(KR106MenuItem::item(23, "Classic VCF Frq Scale", true, mProcessor.mJ6ClassicVcf));
     items.push_back(KR106MenuItem::sep());
     items.push_back(KR106MenuItem::makeAction(40, "Component Variance Editor"));
     items.push_back(KR106MenuItem::makeAction(41, "Keyboard Shortcuts"));
@@ -280,11 +279,6 @@ void KR106Editor::showSettingsMenu()
             {
                 mProcessor.mMonoRetrigger = !mProcessor.mMonoRetrigger;
                 mProcessor.mDSP.mMonoRetrigger = mProcessor.mMonoRetrigger;
-            }
-            if (r == 23)
-            {
-                mProcessor.mJ6ClassicVcf = !mProcessor.mJ6ClassicVcf;
-                mProcessor.mDSP.SetJ6ClassicVcf(mProcessor.mJ6ClassicVcf);
             }
             int newOS = r == 30 ? 2 : r == 31 ? 4 : 0;
             if (newOS > 0 && newOS != mProcessor.mVcfOversample)

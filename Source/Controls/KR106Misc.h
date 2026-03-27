@@ -95,9 +95,17 @@ public:
     void paint(juce::Graphics& g) override
     {
         if (!mDrawable) return;
-        auto bounds = getLocalBounds().toFloat().reduced(1.f);
+        auto bounds = getLocalBounds().toFloat().reduced(2.f);
+
+        // Glow behind icon on hover
+        if (mHover)
+        {
+            g.setColour(juce::Colour(0, 180, 0).withAlpha(0.25f));
+            g.fillEllipse(getLocalBounds().toFloat().reduced(1.f));
+        }
+
         auto copy = mDrawable->createCopy();
-        auto colour = mHover ? juce::Colour(0, 0, 0) : juce::Colour(34, 34, 34);
+        auto colour = mHover ? juce::Colour(0, 200, 0) : juce::Colour(255, 255, 255);
         copy->replaceColour(juce::Colour(0x5a, 0x5a, 0x5a), colour);
         copy->drawWithin(g, bounds, juce::RectanglePlacement::centred, 1.0f);
     }

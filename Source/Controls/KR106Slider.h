@@ -488,17 +488,26 @@ public:
     {
       auto bright = juce::Colour(219, 219, 219);
       auto dim    = juce::Colour(126, 126, 126);
-      // Draw every other division (7 ticks from 13 divisions)
-      float tw = 17.f + static_cast<float>(mExtraRight);
-      int last = kr106::kNumLfoDivisions - 1; // 12
-      int mid = last / 2;                      // 6
+      float rw = 17.f + static_cast<float>(mExtraRight);
+
+      // Right side: standard 11 ticks (same as base slider)
+      for (int i = 0; i <= 10; i++)
+      {
+        float y = std::round(44.f - i * 4.f);
+        g.setColour((i == 0 || i == 5 || i == 10) ? bright : dim);
+        g.fillRect(10.f, y, rw - 9.f, 1.f);
+      }
+
+      // Left side: 7 division ticks (every other from 13 divisions)
+      int last = kr106::kNumLfoDivisions - 1;
+      int mid = last / 2;
       for (int i = 0; i <= last; i += 2)
       {
         float norm = static_cast<float>(i) / static_cast<float>(last);
         float y = std::round(44.f - norm * 40.f);
         bool major = (i == 0 || i == mid || i == last);
         g.setColour(major ? bright : dim);
-        g.fillRect(1.f, y, tw, 1.f);
+        g.fillRect(1.f, y, 6.f, 1.f);
       }
     }
     else

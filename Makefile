@@ -1,7 +1,7 @@
 BUILD_DIR = build-juce
 CONFIG   ?= Debug
 
-.PHONY: build run reaper clean deps help
+.PHONY: build run debug reaper clean deps help
 
 build:
 	# Touch .cpp so CMake picks up header-only DSP changes
@@ -12,6 +12,10 @@ build:
 run: build
 	-killall "Ultramaster KR-106" 2>/dev/null; sleep 0.5
 	open "$(BUILD_DIR)/KR106_artefacts/$(CONFIG)/Standalone/Ultramaster KR-106.app"
+
+debug: build
+	-killall "Ultramaster KR-106" 2>/dev/null; sleep 0.5
+	lldb "$(BUILD_DIR)/KR106_artefacts/$(CONFIG)/Standalone/Ultramaster KR-106.app/Contents/MacOS/Ultramaster KR-106" -- -s
 
 reaper: build
 	@echo "Restarting Reaper with fresh VST cache..."
@@ -38,6 +42,7 @@ help:
 	@echo ""
 	@echo "  make build        Build all formats (AU, VST3, LV2, Standalone)"
 	@echo "  make run          Build and launch Standalone (macOS)"
+	@echo "  make debug        Build and launch in lldb debugger"
 	@echo "  make reaper       Build and restart Reaper (macOS)"
 	@echo "  make deps         Install Linux build dependencies (apt)"
 	@echo "  make clean        Remove build directory"

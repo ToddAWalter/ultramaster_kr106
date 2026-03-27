@@ -273,9 +273,13 @@ public:
             int id = mItems[idx].id;
             if (mItems[idx].dismissOnClick)
             {
-                // Action item: fire callback and dismiss
-                if (mOnSelect) mOnSelect(id);
-                dismiss();
+                // Action item: dismiss first (moves callback out safely),
+                // then fire with actual id via deferred call
+                auto cb = std::move(mOnSelect);
+                mOnSelect = nullptr;
+                setVisible(false);
+                if (cb)
+                    juce::MessageManager::callAsync([cb = std::move(cb), id]() { cb(id); });
                 return;
             }
             if (mItems[idx].radio)
@@ -312,6 +316,15 @@ public:
         }
     }
 
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress::escapeKey)
+        {
+            dismiss();
+            return true;
+        }
+        return false;
+    }
 
 private:
     int itemAtPos(juce::Point<int> pos) const

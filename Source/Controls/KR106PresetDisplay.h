@@ -68,20 +68,39 @@ public:
 
         g.setColour(KR106Theme::border());
         g.drawRect(getLocalBounds());
+
+        // [x] close button in top-right corner
+        int bx = getWidth() - kCloseSize;
+        auto closeBounds = juce::Rectangle<int>(bx, 0, kCloseSize, kCloseSize);
+        g.setColour(mHoverClose ? KR106Theme::hoverBg() : KR106Theme::bg());
+        g.fillRect(closeBounds);
+        g.setColour(KR106Theme::border());
+        g.drawRect(closeBounds);
+        g.setColour(KR106Theme::bright());
+        g.setFont(juce::Font(juce::FontOptions(mTypeface)
+            .withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(10.f));
+        g.drawText("x", closeBounds.translated(2, 0), juce::Justification::centred);
     }
 
     void mouseMove(const juce::MouseEvent& e) override
     {
-        int idx = hitTest(e.getPosition());
-        if (idx != mHoverIndex)
+        bool overClose = closeRect().contains(e.getPosition());
+        int idx = overClose ? -1 : hitTest(e.getPosition());
+        if (idx != mHoverIndex || overClose != mHoverClose)
         {
             mHoverIndex = idx;
+            mHoverClose = overClose;
             repaint();
         }
     }
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        if (closeRect().contains(e.getPosition()))
+        {
+            dismiss();
+            return;
+        }
         int idx = hitTest(e.getPosition());
         if (idx >= 0)
         {
@@ -133,6 +152,11 @@ public:
             dismiss();
             return true;
         }
+        else if (key == juce::KeyPress::escapeKey)
+        {
+            dismiss();
+            return true;
+        }
         else
             return false;
 
@@ -144,6 +168,13 @@ public:
     }
 
 private:
+    static constexpr int kCloseSize = 14;
+
+    juce::Rectangle<int> closeRect() const
+    {
+        return { getWidth() - kCloseSize, 0, kCloseSize, kCloseSize };
+    }
+
     int hitTest(juce::Point<int> pos) const
     {
         float rh = rowH();
@@ -166,6 +197,7 @@ private:
     juce::Typeface::Ptr mTypeface;
     std::function<void()> mOnClose;
     int mHoverIndex = -1;
+    bool mHoverClose = false;
 };
 
 // ============================================================================
@@ -297,16 +329,16 @@ private:
         if (mContextMenu) return;
 
         std::vector<KR106MenuItem> items;
-        items.push_back(KR106MenuItem::item(1, "Save Patch"));
-        items.push_back(KR106MenuItem::item(5, "Clear Patch"));
+        items.push_back(KR106MenuItem::makeAction(1, "Save Patch"));
+        items.push_back(KR106MenuItem::makeAction(5, "Clear Patch"));
         items.push_back(KR106MenuItem::sep());
-        items.push_back(KR106MenuItem::item(6, "Load Patch Bank"));
+        items.push_back(KR106MenuItem::makeAction(6, "Load Patch Bank"));
       #if JUCE_MAC
-        items.push_back(KR106MenuItem::item(7, "Reveal in Finder"));
+        items.push_back(KR106MenuItem::makeAction(7, "Reveal in Finder"));
       #elif JUCE_WINDOWS
-        items.push_back(KR106MenuItem::item(7, "Show in Explorer"));
+        items.push_back(KR106MenuItem::makeAction(7, "Show in Explorer"));
       #else
-        items.push_back(KR106MenuItem::item(7, "Show in Files"));
+        items.push_back(KR106MenuItem::makeAction(7, "Show in Files"));
       #endif
 
         juce::Component* editor = findParentComponentOfClass<juce::AudioProcessorEditor>();
