@@ -1,0 +1,57 @@
+Patch,Name
+11,Low Strings
+12,Mid Strings
+13,High Strings
+14,Staccato Strings
+15,Fanfare Brass
+16,Synthesizer Brass
+17,Mellow Legato Brass
+18,High Brass
+21,Clav I
+22,Clav II
+23,Harpsichord
+24,Honky Tonk
+25,Chime Piano
+26,Space Piano
+27,Pluck I
+28,Pluck II
+31,B-3
+32,C-3
+33,B-3 #2
+34,Drawbar Organ
+35,Combo Organ I
+36,Combo Organ II
+37,Combo Organ III
+38,Pipe Organ
+41,Flute
+42,Clarinet
+43,Solo Trumpet
+44,Oboe
+45,Harmonica
+46,Strum
+47,Flamenco Guitar
+48,Harp
+51,Space Harp
+52,Ethereal
+53,Sweet Sweep
+54,Mellow Sweep
+55,Slow Sweep
+56,Space Sweep
+57,Chunky Chorus
+58,Squonk
+61,Synth Bass
+62,Pedal Bass
+63,String Bass
+64,Funk Bass
+65,Hammer Lead
+66,Duke Lead
+67,Neg Lead
+68,Blip Lead
+71,Wind
+72,Space Chime
+73,Space Swell
+74,Chopper Chord
+75,Lunar Landers
+76,Martian Chord
+77,Vulcan Turbos
+78,The Surge

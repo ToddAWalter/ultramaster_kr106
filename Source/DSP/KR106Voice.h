@@ -8,6 +8,7 @@
 #include "KR106ADSR.h"
 #include "KR106Oscillators.h"
 #include "KR106OscillatorsWT.h"
+#include "KR106VCA.h"
 #include "KR106VCF.h"
 #include "KR106VcfFreqJ106.h"
 
@@ -177,9 +178,42 @@ public:
     mPwMaxOffset     = rng() * 0.02f;        // PW max: 93–97%
   }
 
-  // FIXME(kr106) Measure DCO LFO depth vs slider voltage on hardware Juno-6
-  // Placeholder: linear, ±4 st assumed until measured
-  static float dcoLfoDepth6(float t) { return t * 4.f; }
+  // DCO LFO depth calibrated from Juno-6 strobe tuner measurements
+  // at 10 slider positions (base=1048 Hz, peak semitone deviation):
+  //   slider  min_Hz  max_Hz  peak_st
+  //   0.1     1045    1050    0.041
+  //   0.2     1039    1055    0.132
+  //   0.3     1035    1059    0.198
+  //   0.4     1030    1065    0.289
+  //   0.5     1024    1073    0.405
+  //   0.6     1019    1078    0.487
+  //   0.7      994    1108    0.940
+  //   0.8      967    1142    1.440
+  //   0.9      934    1184    2.053
+  //   1.0      909    1217    2.526
+  // Circuit: A10K log taper pot (EVA TOHC14A14) -> R5 82K -> summing
+  // node with Tune (R7 47K) and Bender (R6 22K), then op amp gain
+  // 20x (1K/20K).
+  //
+  // TAPER ANALYSIS: The curve is consistent with a standard two-segment
+  // carbon A-taper pot, not a smooth logarithmic element. Normalized to
+  // max depth, the midpoint (t=0.5) sits at 16% -- right in the standard
+  // A-taper spec of 10-20% at 50% rotation. The slope jumps ~3x between
+  // t=0.6 and t=0.7, indicating a knee at ~63% rotation typical of
+  // Japanese carbon A-taper pots (Alps, Noble, EVA). Slight curvature
+  // within each segment is normal for carbon elements and loading through
+  // the 82K series resistor. No datasheet found for EVA TOHC14A14.
+  static float dcoLfoDepth6(float t)
+  {
+    static constexpr float kTable[11] = {
+      0.f, 0.041f, 0.132f, 0.198f, 0.289f, 0.405f,
+      0.487f, 0.940f, 1.440f, 2.053f, 2.526f
+    };
+    float idx = t * 10.f;
+    int i0 = std::min(static_cast<int>(idx), 9);
+    float frac = idx - i0;
+    return kTable[i0] + frac * (kTable[i0 + 1] - kTable[i0]);
+  }
 
   // Maps the Juno-6 VCF LFO depth slider (0..1) to a peak pitch deviation
   // in semitones (per direction).
@@ -628,12 +662,12 @@ public:
         oscOut += static_cast<float>(noiseBuffer[i]) * noiseAT;
       float signal = mVCF.Process(oscOut, vcfCPS, mVcfRes);
 
-      // --- VCA ---
+      // --- VCA (BA662 + TR17 exponential converter) ---
       float vcaOut;
       if (mVcaMode)
-        vcaOut = signal * mADSR.mGateEnv * velocity * mVcaGainScale; // Gate mode
+        vcaOut = signal * kr106::VCAGain(mADSR.mGateEnv) * velocity * mVcaGainScale; // Gate mode
       else
-        vcaOut = signal * env * velocity * mVcaGainScale; // ADSR mode
+        vcaOut = signal * kr106::VCAGain(env) * velocity * mVcaGainScale; // ADSR mode
 
       // Accumulate mono (chorus does stereo later)
       outputs[0][i] += static_cast<T>(vcaOut);
