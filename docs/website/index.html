@@ -4,14 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
+<link rel="stylesheet" href="https://use.typekit.net/siv2osi.css">
 <title>Ultramaster KR-106 — Virtual Analog Synthesizer</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Oswald:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+  @font-face { font-family: 'Segment14'; src: url('Segment14.otf') format('opentype'); }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'Oswald', sans-serif;
+    font-family: 'transducer-condensed', 'Oswald', sans-serif;
+    font-weight: 500;
     background: #111 url('background.png') center top / cover no-repeat fixed;
     color: #e8e8e8;
     min-height: 100vh;
@@ -31,33 +34,32 @@
 
   .accent-bar, main, footer { position: relative; z-index: 1; }
 
-  /* Red/blue accent bar at top, matching the synth panel */
-  .accent-bar {
-    width: 100%;
-    height: 4px;
-    background: linear-gradient(90deg, #cc0000 0%, #cc0000 70%, #2233cc 70%, #2233cc 100%);
-  }
-
   main {
-    max-width: 960px;
+    max-width: 940px;
     width: 100%;
-    padding: 3rem 1.5rem;
+    padding: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
 
   header {
     text-align: center;
-    margin-bottom: 2.5rem;
+    margin: 0 auto 1.2rem;
+    max-width: 940px;
+    width: 100%;
   }
 
   h1 {
-    font-family: 'Archivo Black', sans-serif;
-    font-style: italic;
+    font-family: 'transducer-extended', sans-serif;
+    font-weight: 900;
     font-size: 2.4rem;
-    font-weight: 400;
+    text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 0.4rem;
   }
 
+  h1 .white { color: #ffffff; }
   h1 .red { color: #cc0000; }
   h1 .blue { color: #2233cc; }
 
@@ -68,10 +70,8 @@
   }
 
   .screenshot {
-    width: 100%;
-    border-radius: 8px;
-    border: 1px solid #333;
-    margin-bottom: 2.5rem;
+    width: 940px;
+    margin-bottom: 1rem;
     display: block;
   }
 
@@ -79,9 +79,9 @@
     font-size: 1.05rem;
     line-height: 1.7;
     color: #ccc;
-    margin-bottom: 2.5rem;
+    margin-bottom: 1.2rem;
     text-align: center;
-    max-width: 700px;
+    max-width: 800px;
     margin-left: auto;
     margin-right: auto;
   }
@@ -96,10 +96,15 @@
 
   .downloads {
     display: flex;
-    gap: 1rem;
+    gap: 0.8rem;
     justify-content: center;
     flex-wrap: wrap;
-    margin-bottom: 3rem;
+    margin-bottom: 1rem;
+  }
+
+  .downloads .dl-btn {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .dl-btn {
@@ -147,42 +152,32 @@
   }
 
   .features {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.2rem;
-    margin-bottom: 3rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    max-width: 940px;
   }
 
-  .feature {
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
-    border-radius: 6px;
-    padding: 1.2rem;
-  }
-
-  .feature h3 {
-    font-family: 'Archivo Black', sans-serif;
-    font-style: italic;
-    font-size: 0.85rem;
-    font-weight: 400;
-    color: #4455dd;
+  .features span {
+    font-family: 'transducer-extended', sans-serif;
+    font-weight: 900;
     text-transform: uppercase;
+    font-size: 0.7rem;
     letter-spacing: 0.06em;
-    margin-bottom: 0.4rem;
-  }
-
-  .feature p {
-    font-size: 0.9rem;
-    color: #999;
-    line-height: 1.5;
+    color: #e8e8e8;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.3rem 0.7rem;
   }
 
   .formats {
     display: flex;
-    gap: 0.6rem;
+    gap: 0.5rem;
     justify-content: center;
     flex-wrap: wrap;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
   }
 
   .formats span {
@@ -195,12 +190,103 @@
     padding: 0.3rem 0.7rem;
   }
 
+  /* Hero row: description/downloads left, edition ad right */
+  .hero-row {
+    display: flex;
+    gap: 2rem;
+    padding: 0 40px;
+    align-items: stretch;
+    margin-bottom: 1.5rem;
+    width: 100%;
+    max-width: 940px;
+  }
+
+  .hero-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+
+
+  /* Kayrock Editions ad */
+  .edition-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 220px;
+    flex-shrink: 0;
+    text-decoration: none;
+    color: #ccc;
+    position: relative;
+    padding-bottom: 10px;
+  }
+
+  .edition-img-wrap {
+    position: relative;
+    width: 220px;
+    height: 275px;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  .edition-img-wrap img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: opacity 1s ease-in-out;
+  }
+
+  .edition-title {
+    position: absolute;
+    bottom: -0.65rem;
+    left: 0;
+    right: 0;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #888;
+    line-height: 1.3;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .edition-banner:hover .edition-title { color: #ccc; }
+
+  .story-row {
+    display: flex;
+    gap: 2rem;
+    max-width: 940px;
+    width: 100%;
+    margin-bottom: 1.5rem;
+  }
+
+  .story-row .story {
+    flex: 1;
+    margin-bottom: 0;
+  }
+
   .story {
     max-width: 640px;
-    margin: 0 auto 2.5rem;
+    margin: 0 auto 1.5rem;
     font-size: 0.95rem;
     line-height: 1.75;
     color: #aaa;
+  }
+
+  .story-2col {
+    max-width: 940px;
+    column-count: 2;
+    column-gap: 2rem;
+  }
+
+  .story-2col h2 {
+    column-span: all;
   }
 
   .story p + p {
@@ -208,7 +294,7 @@
   }
 
   .story h2 {
-    font-family: 'Archivo Black', sans-serif;
+    font-family: 'transducer-extended', sans-serif; font-weight: 900; text-transform: uppercase;
     font-style: italic;
     font-size: 1.1rem;
     font-weight: 400;
@@ -217,30 +303,34 @@
   }
 
   .story a {
-    color: #4455dd;
+    color: #6688ee;
     text-decoration: none;
   }
 
-  .story a:hover { color: #6677ee; }
+  .story a:hover { color: #99aaff; }
 
   .changelog {
-    max-width: 640px;
+    max-width: 940px;
+    width: 100%;
     margin: 0 auto 2.5rem;
+    column-count: 2;
+    column-gap: 2rem;
   }
 
   .changelog h2 {
-    font-family: 'Archivo Black', sans-serif;
+    column-span: all;
+    font-family: 'transducer-extended', sans-serif; font-weight: 900; text-transform: uppercase;
     font-style: italic;
     font-size: 1.1rem;
     font-weight: 400;
     color: #e8e8e8;
-    text-align: center;
     margin-bottom: 1.2rem;
   }
 
   .changelog details {
     padding-left: 1rem;
     margin-bottom: 0.8rem;
+    break-inside: avoid;
   }
 
   .changelog summary {
@@ -262,16 +352,17 @@
 
   .changelog details[open] > summary::before {
     content: '\25be ';
-    color: #4455dd;
+    color: #e8e8e8;
   }
 
   .changelog summary .ver {
-    color: #4455dd;
-    font-family: 'Archivo Black', sans-serif;
+    color: #e8e8e8;
+    font-family: 'transducer-extended', sans-serif; font-weight: 900; text-transform: uppercase;
     font-style: italic;
-    font-weight: 400;
     font-size: 0.85rem;
-    margin-right: 0.5rem;
+    display: inline-block;
+    width: 3.5rem;
+    flex-shrink: 0;
   }
 
   .changelog ul {
@@ -307,24 +398,54 @@
     h1 { font-size: 1.6rem; }
     .downloads { flex-direction: column; align-items: center; }
     .dl-btn { width: 100%; max-width: 280px; justify-content: center; }
+    .hero-row { flex-direction: column; align-items: center; }
+    .edition-banner { width: 100%; max-width: 220px; }
+    .edition-img-wrap { width: 100%; height: 200px; }
   }
 </style>
 </head>
 <body>
-<div class="accent-bar"></div>
 <main>
   <header>
-    <h1><span class="red">ULTRAMASTER</span> <span class="blue">KR-106</span></h1>
+    <img src="logo.png" width="900" alt="ULTRAMASTER KR-106" style="display:block; margin:0 auto;">
   </header>
 
   <img class="screenshot" src="screenshot.png" alt="Ultramaster KR-106 synthesizer interface">
 
   <p class="description">
-    A virtual analog synthesizer inspired by the classic Roland Juno polysynths,
-    with DSP calibrated from hardware measurements, firmware analysis, and
-    factory schematics. 6-voice polyphonic.<br>Free and open source.
-    AU, VST3, CLAP, LV2, and standalone.
-  </p>
+    A virtual analog synthesizer inspired by the classic Roland Juno polysynths. By analyzing hardware measurements, firmware, and factory schematics, we are constantly pushing closer to circuit-accurate perfection. It's an ongoing journey, but we won't stop believin' that because it's free and open-source, we can get there together.
+    </p>
+  <div class="hero-row">
+  <div class="hero-left">
+
+  <div class="downloads" id="downloads">
+    <a class="dl-btn" data-os="mac" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-macOS.zip">
+      macOS<br>
+      <small>10.15+ / Intel &amp; Apple Silicon</small>
+    </a>
+    <a class="dl-btn" data-os="win" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Windows.zip">
+      Windows<br>
+      <small>10+ / 64-bit</small>
+    </a>
+    <a class="dl-btn" data-os="linux" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux.zip">
+      Linux<br>
+      <small>Ubuntu 20.04+ / x86_64</small>
+    </a>
+    <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux-arm64.zip">
+      Linux<br>
+      <small>Raspberry Pi OS / arm64</small>
+    </a>
+  </div>
+  <script>
+    (function() {
+      var p = navigator.platform || '', u = navigator.userAgent || '';
+      var os = /Mac/.test(p) ? 'mac' : /Win/.test(p) ? 'win' : /Linux/.test(u) ? 'linux' : '';
+      if (os) {
+        var btn = document.querySelector('.dl-btn[data-os="' + os + '"]');
+        if (btn) btn.classList.add('primary');
+      }
+    })();
+  </script>
 
   <div class="formats">
     <span>VST3</span>
@@ -346,113 +467,97 @@
       });
   </script>
 
-  <div class="downloads" id="downloads">
-    <a class="dl-btn" data-os="mac" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-macOS.zip">
-      macOS<br>
-      <small>10.15+ / Intel &amp; Apple Silicon</small>
-    </a>
-    <a class="dl-btn" data-os="win" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Windows.zip">
-      Windows<br>
-      <small>10+ / 64-bit</small>
-    </a>
-    <a class="dl-btn" data-os="linux" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux.zip">
-      Linux<br>
-      <small>Ubuntu 20.04+ / x86_64</small>
-    </a>
-    <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux-arm64.zip">
-      Linux<br>
-      <small>Raspberry Pi OS / arm64</small>
-    </a>
-  <script>
-    (function() {
-      var p = navigator.platform || '', u = navigator.userAgent || '';
-      var os = /Mac/.test(p) ? 'mac' : /Win/.test(p) ? 'win' : /Linux/.test(u) ? 'linux' : '';
-      if (os) {
-        var btn = document.querySelector('.dl-btn[data-os="' + os + '"]');
-        if (btn) btn.classList.add('primary');
-      }
-    })();
-  </script>
+  <div class="downloads">
     <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106">
-      Source Code (GPL3)
+      Source Code<br>
+      <small>GPL3 license</small>
+    </a>
+    <a class="dl-btn" href="guide.html">
+      User's Guide<br>
+      <small>Controls, presets &amp; settings</small>
+    </a>
+    <a class="dl-btn" href="guide.html#midi">
+      MIDI Mapping<br>
+      <small>CC &amp; SysEx reference</small>
+    </a>
+    <a class="dl-btn" href="preset_test.html">
+      Preset A/B Tests<br>
+      <small>Record &amp; compare patches</small>
     </a>
   </div>
+  </div><!-- .hero-left -->
+  <a class="edition-banner" id="edition-banner" href="#" target="_blank" rel="noopener">
+    <div class="edition-img-wrap">
+      <img id="edition-img-a" src="" alt="">
+      <img id="edition-img-b" src="" alt="" style="opacity:0;">
+    </div>
+    <div class="edition-title" id="edition-title"></div>
+  </a>
+  </div><!-- .hero-row -->
 
   <div class="features">
-    <div class="feature">
-      <h3>1984 Mode</h3>
-      <p>ROM-accurate D7811G envelope, VCF frequency from firmware disassembly, 4-position switched HPF. All parameters calibrated from firmware analysis and factory schematics.</p>
-    </div>
-    <div class="feature">
-      <h3>1982 Mode</h3>
-      <p>Analog RC envelopes, continuous HPF sweep calibrated from 11 hardware measurements, LFO rate from circuit model. Analog CV path modeled from circuit analysis and real hardware.</p>
-    </div>
-    <div class="feature">
-      <h3>6/8/10 Voice Poly</h3>
-      <p>Per-voice DCO, VCF, VCA, and ADSR envelope. Shared LFO, HPF, chorus, and arpeggiator. Mono, Poly I, and Poly II key modes with portamento.</p>
-    </div>
-    <div class="feature">
-      <h3>128 Factory Presets</h3>
-      <p>All original patches decoded from factory SysEx data, no hand tweaking. If something doesn't sound right, we fix the model, not the patch.</p>
-    </div>
-    <div class="feature">
-      <h3>IR3109 VCF</h3>
-      <p>4-pole TPT OTA cascade with per-stage tanh saturation, Newton-Raphson nonlinear solving, 2x/4x oversampling, and adaptive thermal noise on the resonance feedback path.</p>
-    </div>
-    <div class="feature">
-      <h3>MN3009 BBD Chorus</h3>
-      <p>Dual BBD delay lines with antiphase triangle LFO, 4-pole analog reconstruction filters, bucket-brigade companding nonlinearity, and clock-tracked Nyquist filtering.</p>
-    </div>
-    <div class="feature">
-      <h3>Component Variance</h3>
-      <p>Per-voice component tolerances model the subtle differences in pitch, filter cutoff, envelope timing, VCA gain, and pulse width. Editable with Robot/Human/Out of Tune presets.</p>
-    </div>
-    <div class="feature">
-      <h3>MIDI Learn</h3>
-      <p>Right-click any slider or knob to assign a MIDI CC. Multiple parameters can share a CC. Full SysEx send/receive compatible with real Juno-106 hardware.</p>
-    </div>
+    <span>60 / 106 Mode</span>
+    <span>6/8/10 Voice Poly</span>
+    <span>Band Limited DCO</span>
+    <span>IR3109 VCF</span>
+    <span>MN3009 BBD Chorus</span>
+    <span>DAW Synced ARP and LFO</span>
+    <span>128 Factory Presets</span>
+    <span>Oscilloscope</span>
+    <span>Component Variance</span>
+    <span>QWERTY Keyboard</span>
+    <span>MIDI Learn + SysEx</span>
   </div>
 
-  <div class="story" >
-    <h2 style="text-align: center;">A Quarter Century in the Making</h2>
+  <div class="story story-2col">
+    <h2>A Quarter Century in the Making</h2>
     <p>Ultramaster Group was born in the year 2000, in a loft in Brooklyn, NY. Our bold mission: professional-grade audio software for the Linux ecosystem. We were young, idealistic, and perhaps a little bit ahead of our time.</p>
 
     <p>Life eventually pulled us into different orbits. Karl went on to found the art and design powerhouse Kayrock Screenprinting, while Dave joined the engineering teams at Google. But the music never truly stopped.</p>
-    
+
     <p>Twenty-five years ago, we were targeting the Pentium Pro, working without the luxury of oscilloscopes, service manuals, or community hubs like ModWiggler and Reddit. Today, after decades spent designing Kayrock Powertools and scaling global infrastructure, we’ve returned to the Juno source code.</p>
 
-      <p>A lot has changed since the late 90s. Hardware is exponentially faster and DSP methodology has evolved. We have spent time heavily recalibrating and refining the engine for the modern era. While the interface remains intentionally familiar, the internal architecture has been overhauled for better performance and precision.</p>
-      
-      <p>We are rereleasing KR-106 as an open-source project under the GPL to give back to the community that inspired us from the start. Our goal is to make this as accurate as humanly possible, and we would love for you to help us get there.</p>
-   
+    <p>A lot has changed since the late 90s. Hardware is exponentially faster and DSP methodology has evolved. We have spent time heavily recalibrating and refining the engine for the modern era. While the interface remains intentionally familiar, the internal architecture has been overhauled for better performance and precision.</p>
+
+    <p>We are rereleasing KR-106 as an open-source project under the GPL to give back to the community that inspired us from the start. Our goal is to make this as accurate as humanly possible, and we would love for you to help us get there.</p>
   </div>
 
-  <div class="story">
-    <h2 style="text-align: center;">Support the Project</h2>
-    <p>Ultramaster KR-106 is, and always will be, 100% free and open source. We don't take donations, but if you'd like to support the hands behind the code:
-      for Karl, visit <a href="https://shop.kayrock.org">Kayrock Screenprinting</a> or check out <a href="https://kayrock.org/powertools">Kayrock Powertools</a>.
-      For Dave, just go use Google Maps or something.</p>
-  </div>
-
-  <div class="story">
-    <h2 style="text-align: center;">Have a Juno-106?</h2>
-    <p style="text-align: center;">Help us calibrate the KR-106 by recording a few factory presets on your hardware.
-      We provide <a href="preset_test.html">MIDI files</a> that program your synth via SysEx and play test notes.
-      Just hit play, record the output, and send it our way. The more units we hear from,
-      the better we can model the real thing.</p>
-  </div>
-
-  <div class="story">
-    <h2 style="text-align: center;">Documentation</h2>
-    <p style="text-align: center;"><a href="guide.html">User's Guide</a> — Controls, keyboard, presets, and settings.</p>
-    <p style="text-align: center;"><a href="midi_mapping.html">MIDI Mapping Reference</a> — Standard CC and Roland SysEx control assignments.</p>
-    <p style="text-align: center;"><a href="preset_test.html">Preset A/B Test Files</a> — MIDI files for recording and comparing factory presets.</p>
+  <div class="story-row">
+    <div class="story">
+      <h2>Support the Project</h2>
+      <p>Ultramaster KR-106 is, and always will be, 100% free and open source. We don't take donations, but if you'd like to support the hands behind the code:
+        for Karl, visit <a href="https://shop.kayrock.org">Kayrock Screenprinting</a> or check out <a href="https://kayrock.org/powertools">Kayrock Powertools</a>.
+        For Dave, just go use Google Maps or something.</p>
+    </div>
+    <div class="story">
+      <h2>Have a Juno-106?</h2>
+      <p>Help us calibrate the KR-106 by recording a few factory presets on your hardware.
+        We provide <a href="preset_test.html">MIDI files</a> that program your synth via SysEx and play test notes.
+        Just hit play, record the output, and send it our way. The more units we hear from,
+        the better we can model the real thing.</p>
+    </div>
   </div>
 
   <div class="changelog">
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.4.5</span> Juno-60 mode, hardware-calibrated DSP, UI improvements</summary>
+      <ul>
+        <li>Juno-60 preset bank: 128 factory patches from the original manual, dual 60/106 banks with mode switch</li>
+        <li>60 mode uses authentic J6 VCF frequency curve and C1 keyboard tracking by default</li>
+        <li>DCO LFO depth calibrated from Juno-6 hardware (strobe tuner, 11-point A-taper pot curve)</li>
+        <li>VCA: BA662 exponential gain model from schematic (Q17 transistor converter)</li>
+        <li>VCA Level: +/-10 dB range confirmed from hardware recording</li>
+        <li>Scope: dynamic ADSR zoom with continuous A-D-S-R curve, 1.5px smooth path strokes</li>
+        <li>Icon buttons with hover glow, preset sheet close button and ESC dismiss</li>
+        <li>Menu crash fix: deferred callbacks for patch manager actions</li>
+        <li>README.md in release zips, replaces per-platform INSTALL.txt</li>
+        <li>User guide: 60/106 mode docs, merged MIDI mapping, full QWERTY table</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.4.4</span> DAW sync, VCA/VCF corrections, UI improvements</summary>
       <ul>
         <li>Arpeggiator DAW sync: locks to host tempo with 9 note divisions (4 Beats to 32nd Note), beat-grid aligned stepping</li>
@@ -709,5 +814,169 @@
     </details>
   </div>
 </main>
+<script>
+// === Kayrock Editions rotating banner ===
+(function() {
+  const editions = [
+    {title: "Kirsten Deirup: Bystander", url: "https://shop.kayrock.org/products/kirsten-deirup-bystander", image: "kirsten-deirup-bystander_comp.png"},
+    {title: "Bridget Caramagna: Panoply", url: "https://shop.kayrock.org/products/bridget-caramagna-panoply", image: "bridget-caramagna-panoply_comp.png"},
+    {title: "Trudy Benson: Doom Bloom", url: "https://shop.kayrock.org/products/trudy-benson-doom-bloom", image: "trudy-benson-doom-bloom_comp.png"},
+    {title: "Liz Collins: Zagreb Mountains", url: "https://shop.kayrock.org/products/liz-collins", image: "liz-collins-zagreb-mountains_comp.png"},
+    {title: "Ruby Sky Stiler: Catsitter", url: "https://shop.kayrock.org/products/ruby-sky-stiler-catsitter", image: "ruby-sky-stiler-catsitter_comp.png"},
+    {title: "Lauren De La Roche", url: "https://shop.kayrock.org/products/lauren-de-la-roche", image: "lauren-de-la-roche_comp.png"},
+    {title: "Erika Shiba: Here There", url: "https://shop.kayrock.org/products/erika-shiba", image: "erika-shiba-here-there_comp.png"},
+    {title: "Alexandra Zsigmond: Conscious/Subconscious", url: "https://shop.kayrock.org/products/alexandra-zsigmond", image: "alexandra-zsigmond-conscioussubconscious_comp.png"},
+    {title: "Antonio Carrau", url: "https://shop.kayrock.org/products/antonio-carrau", image: "antonio-carrau_comp.png"},
+    {title: "James Turek: The Heliopolis", url: "https://shop.kayrock.org/products/james-turek-the-heliopolis", image: "james-turek-the-heliopolis_comp.png"},
+    {title: "Tricia Keightley: Multiple.20", url: "https://shop.kayrock.org/products/tricia-keightley-multiple-20", image: "tricia-keightley-multiple20_comp.png"},
+    {title: "Peter Burr: Dirtscraper Elevation Chapter 24", url: "https://shop.kayrock.org/products/peter-burr", image: "peter-burr-dirtscraper-elevation-chapter-24_comp.png"},
+    {title: "Zoe Pettijohn Schade: Conflict Arrows 3", url: "https://shop.kayrock.org/products/zoe-pettijohn-schade-conflict-arrows-3", image: "zoe-pettijohn-schade-conflict-arrows-3_comp.png"},
+    {title: "Melissa Oresky: Fern Portal", url: "https://shop.kayrock.org/products/melissa-oresky", image: "melissa-oresky-fern-portal_comp.png"},
+    {title: "Paul Brainard: 7/9/1989 Sonic Temple Pittsburgh Pa", url: "https://shop.kayrock.org/products/paul-brainard", image: "paul-brainard-791989-sonic-temple-pittsburgh-pa_comp.png"},
+    {title: "Reed Anderson: H-Flag (Green)", url: "https://shop.kayrock.org/products/reed-anderson", image: "reed-anderson-h-flag-green_comp.png"},
+    {title: "Carolyn Salas: Caryatid", url: "https://shop.kayrock.org/products/carolyn-salas", image: "carolyn-salas-caryatid_comp.png"},
+    {title: "Madeline Donahue: Angel Hair", url: "https://shop.kayrock.org/products/madeline-donahue-angel-hair", image: "madeline-donahue-angel-hair_comp.png"},
+    {title: "Ati Maier: Spacerider 2020", url: "https://shop.kayrock.org/products/ati-maier-spacerider-2020", image: "ati-maier-spacerider-2020_comp.png"},
+    {title: "Timothy Hull: The Survival of Antiquity", url: "https://shop.kayrock.org/products/timothy-hull-the-survival-of-antiquity", image: "timothy-hull-the-survival-of-antiquity_comp.png"},
+    {title: "Robert Otto Epstein: So a touchdown counts as 7 points except when you decide to score a second touchdown for 2 extra points which makes it 8?", url: "https://shop.kayrock.org/products/robert-otto-epstein-so-a-touchdown-counts-as-7-points-except-when-you-decide-to-score-a-second-touchdown-for-2-extra-points-which-makes-it-8", image: "robert-otto-epstein-so-a-touchdown-counts-as-7-points-except-when-you-decide-to-score-a-second-touchdown-for-2-extra-points-which-makes-it-8_comp.png"},
+    {title: "Veronica Graham: Monument Park", url: "https://shop.kayrock.org/products/veronica-graham-monument-park", image: "veronica-graham-monument-park_comp.png"},
+    {title: "Erik den Breejen: When I Cannot Sing My Heart, I Can Only Speak My Mind", url: "https://shop.kayrock.org/products/erik-den-breejen-julia", image: "erik-den-breejen-when-i-cannot-sing-my-heart-i-can-only-speak-my-mind_comp.png"},
+    {title: "Butt Johnson: Flying Ducks", url: "https://shop.kayrock.org/products/butt-johnson-flying-ducks", image: "butt-johnson-flying-ducks_comp.png"},
+    {title: "Yuri Shimojo: A Message from Rudy", url: "https://shop.kayrock.org/products/yuri-shimojo-a-message-from-rudy", image: "yuri-shimojo-a-message-from-rudy_comp.png"},
+    {title: "Maria Calandra: EP's Studio", url: "https://shop.kayrock.org/products/maria-calandra-eps-studio", image: "maria-calandra-eps-studio_comp.png"},
+    {title: "Paul Shortt: Don't Let Adulthood Corrupt You II", url: "https://shop.kayrock.org/products/paul-shortt-dont-let-adulthood-corrupt-you-ii", image: "paul-shortt-dont-let-adulthood-corrupt-you-ii_comp.png"},
+    {title: "Michael Mykola Haleta: B-Side", url: "https://shop.kayrock.org/products/michael-mykola-haleta", image: "michael-mykola-haleta-b-side_comp.png"},
+    {title: "Eric Copeland: Glyph Figure", url: "https://shop.kayrock.org/products/eric-copeland-glyph-figure", image: "eric-copeland-glyph-figure_comp.png"},
+    {title: "Sarah Bedford: Balancing Act", url: "https://shop.kayrock.org/products/sarah-bedford-balancing-act", image: "sarah-bedford-balancing-act_comp.png"},
+    {title: "Jen Hitchings: Lone Wolf (Daddy)", url: "https://shop.kayrock.org/products/jen-hitchings-lone-wolf-daddy", image: "jen-hitchings-lone-wolf-daddy_comp.png"},
+    {title: "Karl LaRocca: Go Cycling Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-cycling-every-day-1", image: "karl-larocca-go-cycling-every-day_comp.png"},
+    {title: "Jamie Felton: Club Fantasy", url: "https://shop.kayrock.org/products/jamie-felton", image: "jamie-felton-club-fantasy_comp.png"},
+    {title: "Mike Par\u00e9: Bikers Bookshelf", url: "https://shop.kayrock.org/products/mike-pare", image: "mike-par\u00e9-bikers-bookshelf_comp.png"},
+    {title: "Sean Jackson: 5 Bicycles", url: "https://shop.kayrock.org/products/sean-jackson-5-bicycles", image: "sean-jackson-5-bicycles_comp.png"},
+    {title: "Heather Benjamin: Cowgirl of Irreversible Damages", url: "https://shop.kayrock.org/products/heather-benjamin-cowgirl", image: "heather-benjamin-cowgirl-of-irreversible-damages_comp.png"},
+    {title: "Meridith Pingree: Wave Pattern 6, 5, 4", url: "https://shop.kayrock.org/products/meridith-pingree-wave-pattern-6-5-4", image: "meridith-pingree-wave-pattern-6-5-4_comp.png"},
+    {title: "Summer Wheat: Beekeeper", url: "https://shop.kayrock.org/products/summer-wheat-beekeeper", image: "summer-wheat-beekeeper_comp.png"},
+    {title: "FOO/SKOU: Transatlantic Duet Print", url: "https://shop.kayrock.org/products/fooskou", image: "fooskou-transatlantic-duet-print_comp.png"},
+    {title: "Zoe Avery Nelson: Haptic Experiment No. 4", url: "https://shop.kayrock.org/products/zoe-avery-nelson-haptic-experiment-no-4", image: "zoe-avery-nelson-haptic-experiment-no-4_comp.png"},
+    {title: "Justin Amrhein: Endangered Species- Tiger Salamander Machine", url: "https://shop.kayrock.org/products/justin-amrhein-ambystoma-californiense", image: "justin-amrhein-endangered-species--tiger-salamander-machine_comp.png"},
+    {title: "Gabriela Jolowicz: Izzy", url: "https://shop.kayrock.org/products/gabriela-jolowicz-izzie", image: "gabriela-jolowicz-izzy_comp.png"},
+    {title: "Dan Shaw-Town: Arbeta", url: "https://shop.kayrock.org/products/dan-shaw-town-arbeta", image: "dan-shaw-town-arbeta_comp.png"},
+    {title: "Kristen Schiele: Night Vision", url: "https://shop.kayrock.org/products/kristen-schiele-night-vision", image: "kristen-schiele-night-vision_comp.png"},
+    {title: "Maja Djordjevic: ALL OF ME WANTS ALL OF YOU", url: "https://shop.kayrock.org/products/maja-djordjevic-all-of-me-wants-all-of-you", image: "maja-djordjevic-all-of-me-wants-all-of-you_comp.png"},
+    {title: "Maria Stabio: Brownout", url: "https://shop.kayrock.org/products/maria-stabio-brownout", image: "maria-stabio-brownout_comp.png"},
+    {title: "Christina Martinelli: September 1, 1939", url: "https://shop.kayrock.org/products/christina-martinelli-september-1-1939", image: "christina-martinelli-september-1-1939_comp.png"},
+    {title: "Liz Wendelbo: Ang\u00e9lique", url: "https://shop.kayrock.org/products/liz-wendelbo-angelique", image: "liz-wendelbo-ang\u00e9lique_comp.png"},
+    {title: "Anthony Palocci Jr.: Voice-Operated, Hands-Free 5-Channel Walkie-Talkie with Headset Mic", url: "https://shop.kayrock.org/products/anthony-palocci-jr-voice-operated-hands-free-5-channel-walkie-talkie-with-headset-mic", image: "anthony-palocci-jr-voice-operated-hands-free-5-channel-walkie-talkie-with-headset-mic_comp.png"},
+    {title: "Leslie Roberts: DIRECTIONS", url: "https://shop.kayrock.org/products/leslie-roberts-directions-1", image: "leslie-roberts-directions_comp.png"},
+    {title: "Claudia Pe\u00f1a: Double Chac Mool", url: "https://shop.kayrock.org/products/claudia-pena-double-chac-mool", image: "claudia-pe\u00f1a-double-chac-mool_comp.png"},
+    {title: "Benjamin Edmiston: Color Grid", url: "https://shop.kayrock.org/products/benjamin-edminston-untitled-color-grid", image: "benjamin-edmiston-color-grid_comp.png"},
+    {title: "Paolo Arao: Tried Angles (Violet)", url: "https://shop.kayrock.org/products/paolo-arao-tried-angles-violet", image: "paolo-arao-tried-angles-violet_comp.png"},
+    {title: "Kristin Texeira: Winslow Road", url: "https://shop.kayrock.org/products/kristin-texeria-winslow-road", image: "kristin-texeira-winslow-road_comp.png"},
+    {title: "Austin Eddy: The passage of time, A lake scene", url: "https://shop.kayrock.org/products/austin-eddy-the-passage-of-time-a-lake-scene", image: "austin-eddy-the-passage-of-time-a-lake-scene_comp.png"},
+    {title: "Lara Schnitger: A Dress Is Not A Yes", url: "https://shop.kayrock.org/products/lara-schnitger-a-dress-is-not-a-yes", image: "lara-schnitger-a-dress-is-not-a-yes_comp.png"},
+    {title: "Daniel van der Noon: NYC 2014-2018", url: "https://shop.kayrock.org/products/daniel-van-der-noon", image: "daniel-van-der-noon-nyc-2014-2018_comp.png"},
+    {title: "Chris Johanson: Beautiful Bird in Flight", url: "https://shop.kayrock.org/products/chris-johanson", image: "chris-johanson-beautiful-bird-in-flight_comp.png"},
+    {title: "Mary Wagner: Enigma", url: "https://shop.kayrock.org/products/mary-wagner-enigma", image: "mary-wagner-enigma_comp.png"},
+    {title: "Sierra Siemer: Neon Cumulus", url: "https://shop.kayrock.org/products/sierra-siemer-neon-cumulus", image: "sierra-siemer-neon-cumulus_comp.png"},
+    {title: "Palma Blank: Superposed", url: "https://shop.kayrock.org/products/palma-blank-superposed", image: "palma-blank-superposed_comp.png"},
+    {title: "Scott Albrecht: Together", url: "https://shop.kayrock.org/products/scott-albrecht-together", image: "scott-albrecht-together_comp.png"},
+    {title: "Anna Bugbee: Axis Mundi", url: "https://shop.kayrock.org/products/anna-bugbee-axis-mundi", image: "anna-bugbee-axis-mundi_comp.png"},
+    {title: "Kat Lyons: Winner", url: "https://shop.kayrock.org/products/kat-lyons-winner", image: "kat-lyons-winner_comp.png"},
+    {title: "Kati Lacker: Hula", url: "https://shop.kayrock.org/products/kati-lacker-hula", image: "kati-lacker-hula_comp.png"},
+    {title: "Flavio Trevisan: CMYK Up Down, Side to Side", url: "https://shop.kayrock.org/products/flavio-trevisan-cmyk-cmyk-up-down-side-to-side", image: "flavio-trevisan-cmyk-cmyk-up-down-side-to-side_comp.png"},
+    {title: "Jude Broughan: Radio Four", url: "https://shop.kayrock.org/products/jude-broughan-radio-four", image: "jude-broughan-radio-four_comp.png"},
+    {title: "Matt Bollinger: The King and Caralee", url: "https://shop.kayrock.org/products/matt-bollinger-the-king-and-caralee", image: "matt-bollinger-the-king-and-caralee_comp.png"},
+    {title: "Kristen Schiele: Hot Tickets", url: "https://shop.kayrock.org/products/kristen-schiele-hot-tickets", image: "kristen-schiele-hot-tickets_comp.png"},
+    {title: "Michelle Weinberg: Fun House Exit", url: "https://shop.kayrock.org/products/michelle-weinberg-fun-house-exit", image: "michelle-weinberg-fun-house-exit_comp.png"},
+    {title: "Naomi Clark: Pocket Jade and Goldstone", url: "https://shop.kayrock.org/products/naomi-clark-pocket-jade-and-goldstone", image: "naomi-clark-pocket-jade-and-goldstone_comp.png"},
+    {title: "Ruby Sky Stiler: Fran\u00e7oise Vase Painting", url: "https://shop.kayrock.org/products/ruby-sky-stiler-francoise-vase-painting", image: "ruby-sky-stiler-fran\u00e7oise-vase-painting_comp.png"},
+    {title: "Daniel Davidson: Mirror (Monster Burger)", url: "https://shop.kayrock.org/products/daniel-davidson-mirror-monster-burger", image: "daniel-davidson-mirror-monster-burger_comp.png"},
+    {title: "Mark Wagner: Greenery", url: "https://shop.kayrock.org/products/mark-wagner-greenery", image: "mark-wagner-greenery_comp.png"},
+    {title: "Scott Teplin: Sundrop Windflower", url: "https://shop.kayrock.org/products/scott-teplin-sundrop-windflower", image: "scott-teplin-sundrop-windflower_comp.png"},
+    {title: "Paul Shortt: Don't Let Adulthood Corrupt You", url: "https://shop.kayrock.org/products/paul-shortt-dont-let-adulthood-corrupt-you", image: "paul-shortt-dont-let-adulthood-corrupt-you_comp.png"},
+    {title: "Gaby D'Alessandro: Marine Explorer", url: "https://shop.kayrock.org/products/gaby-dalessandro-marine-explorer", image: "gaby-dalessandro-marine-explorer_comp.png"},
+    {title: "Eliza Stamps: 720 Hours", url: "https://shop.kayrock.org/products/eliza-stamps-720-hours", image: "eliza-stamps-720-hours_comp.png"},
+    {title: "Tim Lahan: Rise/Set", url: "https://shop.kayrock.org/products/tim-lahan-rise-set", image: "tim-lahan-riseset_comp.png"},
+    {title: "James Ulmer: Mr. Muscle", url: "https://shop.kayrock.org/products/james-ulmer-mr-muscle", image: "james-ulmer-mr-muscle_comp.png"},
+    {title: "Kristen Martincic: Left Corner Tile Pool", url: "https://shop.kayrock.org/products/kristen-martincic-left-corner-tile-pool", image: "kristen-martincic-left-corner-tile-pool_comp.png"},
+    {title: "Kristin Texeira: Piano Player at Wash Square", url: "https://shop.kayrock.org/products/kristin-texeira", image: "kristin-texeira-piano-player-at-wash-square_comp.png"},
+    {title: "Adam Hillman: Pencil Pusher", url: "https://shop.kayrock.org/products/adam-hillman-pencil-pusher", image: "adam-hillman-pencil-pusher_comp.png"},
+    {title: "Peter Granados: KISS", url: "https://shop.kayrock.org/products/peter-granados-kiss", image: "peter-granados-kiss_comp.png"},
+    {title: "JG Thirlwell: Domoscape #1", url: "https://shop.kayrock.org/products/jg-thirlwell-domoscape-1", image: "jg-thirlwell-domoscape-1_comp.png"},
+    {title: "Rasmus Bj\u00f8rn: Nature Is Calling", url: "https://shop.kayrock.org/products/rasmus-bjorn-nature-is-calling", image: "rasmus-bj\u00f8rn-nature-is-calling_comp.png"},
+    {title: "Karl LaRocca: 7 Segment Display", url: "https://shop.kayrock.org/products/karl-larocca-7-segment-display", image: "karl-larocca-7-segment-display_comp.png"},
+    {title: "Shannon Finnegan: 8 Hour Drawing", url: "https://shop.kayrock.org/products/shannon-finnegan-8-hour-drawing", image: "shannon-finnegan-8-hour-drawing_comp.png"},
+    {title: "Matthew Craven: STRIIPES", url: "https://shop.kayrock.org/products/matthew-craven-striipes", image: "matthew-craven-striipes_comp.png"},
+    {title: "Kate Humphreys: Flushing Tire Shop", url: "https://shop.kayrock.org/products/kate-humphreys-flushing-tire-shop", image: "kate-humphreys-flushing-tire-shop_comp.png"},
+    {title: "Robert Otto Epstein: Russell Westbrook", url: "https://shop.kayrock.org/products/robert-otto-epstein-russell-westbrook", image: "robert-otto-epstein-russell-westbrook_comp.png"},
+    {title: "John Broadley: Choose A Haircut", url: "https://shop.kayrock.org/products/john-broadley-choose-a-haircut", image: "john-broadley-choose-a-haircut_comp.png"},
+    {title: "Royal Jarmon: Thank You", url: "https://shop.kayrock.org/products/royal-jarmon-thank-you", image: "royal-jarmon-thank-you_comp.png"},
+    {title: "Corey Durbin: Link", url: "https://shop.kayrock.org/products/corey-durbin-link", image: "corey-durbin-link_comp.png"},
+    {title: "Matthew Korbel Bowers: Goodbye Mountain 1", url: "https://shop.kayrock.org/products/matthew-korbel-bowers-goodbye-mountain-1", image: "matthew-korbel-bowers-goodbye-mountain-1_comp.png"},
+    {title: "Wizard Skull: Sylvester Stallone", url: "https://shop.kayrock.org/products/wizard-skull-sylvester-stallone", image: "wizard-skull-sylvester-stallone_comp.png"},
+    {title: "Mike Simi: Sad Mac", url: "https://shop.kayrock.org/products/mike-simi-sad-mac", image: "mike-simi-sad-mac_comp.png"},
+    {title: "Conrad Guevara: Kalamansi", url: "https://shop.kayrock.org/products/conrad-guevara-kalamansi", image: "conrad-guevara-kalamansi_comp.png"},
+    {title: "Anna Haifisch: Chin Tiki", url: "https://shop.kayrock.org/products/anna-haifisch-chin-tiki", image: "anna-haifisch-chin-tiki_comp.png"},
+    {title: "Naomi Clark: Burger Buns", url: "https://shop.kayrock.org/products/naomi-clark-burger-buns", image: "naomi-clark-burger-buns_comp.png"},
+    {title: "Killer Acid: Death at Home", url: "https://shop.kayrock.org/products/killer-acid-death-at-home", image: "killer-acid-death-at-home_comp.png"},
+    {title: "Monica Wynn: Prophets and Profits", url: "https://shop.kayrock.org/products/monica-wynn-prophets-and-profits", image: "monica-wynn-prophets-and-profits_comp.png"},
+    {title: "Christopher Xydas: Celestial", url: "https://shop.kayrock.org/products/christopher-xydas-celestial", image: "christopher-xydas-celestial_comp.png"},
+    {title: "Janice Scull: Bathing with Serpent", url: "https://shop.kayrock.org/products/janice-scull-bathing-with-serpent", image: "janice-scull-bathing-with-serpent_comp.png"},
+    {title: "Stephen Faillace: Snakes of Sierra Nevada", url: "https://shop.kayrock.org/products/stephen-faillace-snakes-of-sierra-nevada", image: "stephen-faillace-snakes-of-sierra-nevada_comp.png"},
+    {title: "Eric Doeringer: Lines, Colors, and Their Combinations", url: "https://shop.kayrock.org/products/eric-doeringer-lines-colors-and-their-combinations", image: "eric-doeringer-lines-colors-and-their-combinations_comp.png"},
+    {title: "Aliza Morell: Rockrose", url: "https://shop.kayrock.org/products/aliza-morell-rockrose", image: "aliza-morell-rockrose_comp.png"},
+    {title: "Joel Strong: Straight Outta Pawnee", url: "https://shop.kayrock.org/products/joel-strong-straight-outta-pawnee", image: "joel-strong-straight-outta-pawnee_comp.png"},
+    {title: "Kristen Schiele: Double Blondies", url: "https://shop.kayrock.org/products/kristen-schiele-double-blondies", image: "kristen-schiele-double-blondies_comp.png"},
+    {title: "Sarah Niemiec: Wavy Vibes", url: "https://shop.kayrock.org/products/sarah-niemiec-wavy-vibes", image: "sarah-niemiec-wavy-vibes_comp.png"},
+    {title: "Justin Hager: Missy Elliott Smith", url: "https://shop.kayrock.org/products/justin-hager-missy-elliott-smith", image: "justin-hager-missy-elliott-smith_comp.png"},
+    {title: "Christian Joy: Galaxy Hand", url: "https://shop.kayrock.org/products/christian-joy-galaxy-hand", image: "christian-joy-galaxy-hand_comp.png"},
+    {title: "Sheryl Oppenheim: Hand Over Hand", url: "https://shop.kayrock.org/products/sheryl-oppenheim-hand-over-hand", image: "sheryl-oppenheim-hand-over-hand_comp.png"},
+    {title: "Kristine Reano: Chill", url: "https://shop.kayrock.org/products/kristine-reano-chill", image: "kristine-reano-chill_comp.png"},
+    {title: "Karl LaRocca: Go Running Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-running-every-day", image: "karl-larocca-go-running-every-day_comp.png"},
+    {title: "Karl LaRocca: Go Swimming Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-swimming-every-day", image: "karl-larocca-go-swimming-every-day_comp.png"},
+    {title: "Karl LaRocca: Go Cycling Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-cycling-every-day", image: "karl-larocca-go-cycling-every-day_comp.png"},
+    {title: "Esther Ruiz: Index", url: "https://shop.kayrock.org/products/esther-ruiz-index", image: "esther-ruiz-index_comp.png"},
+    {title: "Tres Roemer: Ravishing", url: "https://shop.kayrock.org/products/tres-roemer-ravishing", image: "tres-roemer-ravishing_comp.png"},
+    {title: "John Roemer: Mesh", url: "https://shop.kayrock.org/products/john-roemer-mesh", image: "john-roemer-mesh_comp.png"},
+    {title: "Jennifer Grimyser: Shhh...", url: "https://shop.kayrock.org/products/jennifer-grimyser-shhh", image: "jennifer-grimyser-shhh_comp.png"},
+    {title: "Ryan Brady: Imperfect Union", url: "https://shop.kayrock.org/products/ryan-brady-imperfect-union", image: "ryan-brady-imperfect-union_comp.png"},
+    {title: "Leslie Wamsley: Caught Up", url: "https://shop.kayrock.org/products/leslie-wamsley-caught-up", image: "leslie-wamsley-caught-up_comp.png"},
+    {title: "Justin Amrhein: Cicada Engine", url: "https://shop.kayrock.org/products/justin-amrhein", image: "justin-amrhein-cicada-engine_comp.png"},
+    {title: "Betty Hart: The Edge of Stillness", url: "https://shop.kayrock.org/products/betty-hart-the-edge-of-stillness", image: "betty-hart-the-edge-of-stillness_comp.png"},
+    {title: "Conrad Guevara: Untitled", url: "https://shop.kayrock.org/products/conrad-guevara-untitled", image: "conrad-guevara-untitled_comp.png"},
+    {title: "Kristen Martincic: Square Pool", url: "https://shop.kayrock.org/products/kristen-martincic-square-pool", image: "kristen-martincic-square-pool_comp.png"},
+    {title: "Matthew Craven: GRIDLOCKE (totem)", url: "https://shop.kayrock.org/products/matthew-craven-gridlocke-totem", image: "matthew-craven-gridlocke-totem_comp.png"},
+  ];
+
+  const imgA = document.getElementById('edition-img-a');
+  const imgB = document.getElementById('edition-img-b');
+  const titleEl = document.getElementById('edition-title');
+  const banner = document.getElementById('edition-banner');
+  let showingA = true;
+  let lastIdx = -1;
+
+  function pick() {
+    let idx;
+    do { idx = Math.floor(Math.random() * editions.length); } while (idx === lastIdx);
+    lastIdx = idx;
+    return editions[idx];
+  }
+
+  function show(ed) {
+    const next = showingA ? imgB : imgA;
+    const prev = showingA ? imgA : imgB;
+    next.src = 'edition_images/' + ed.image;
+    next.alt = ed.title;
+    next.style.opacity = '1';
+    prev.style.opacity = '0';
+    titleEl.textContent = ed.title;
+    banner.href = ed.url;
+    showingA = !showingA;
+  }
+
+  show(pick());
+  setInterval(function() { show(pick()); }, 10000);
+})();
+</script>
 </body>
 </html>
