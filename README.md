@@ -10,7 +10,7 @@ A synthesizer plugin emulating the Roland Juno-106, built with [JUCE](https://ju
 6-voice polyphonic with per-voice analog variance, TPT ladder filter with OTA saturation,
 BBD chorus emulation, arpeggiator, portamento/unison mode, and 211 factory presets.
 
-**Formats:** AU, VST3, LV2, Standalone
+**Formats:** AU, VST3, LV2, CLAP, Standalone
 **Platforms:** macOS (10.15+), Windows, Linux
 
 **[Download latest release](https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest)**
